@@ -64,6 +64,43 @@
   <p id="meta" class="meta">Loading…</p>
 
   <section class="section">
+    <h2>Expert checklist (live)</h2>
+    <p class="hint">UK lead + history + RSI + volume. Pass/fail only — not trade advice. Auto-refreshes; from Monday it pulls fresh 1m bars when London/US are open.</p>
+    <div class="controls compare-controls">
+      <label>
+        UK lead
+        <select id="checkUk">
+          <option value="EQQQ" selected>EQQQ.L</option>
+          <option value="FTSE">FTSE</option>
+        </select>
+      </label>
+      <label>
+        US focus
+        <select id="checkUs">
+          <option value="SOXL" selected>SOXL</option>
+          <option value="QQQ">QQQ</option>
+        </select>
+      </label>
+      <label>
+        Lead threshold
+        <select id="checkThreshold">
+          <option value="0.2">0.2%</option>
+          <option value="0.3" selected>0.3%</option>
+          <option value="0.5">0.5%</option>
+          <option value="1">1%</option>
+        </select>
+      </label>
+      <button type="button" id="runChecklist">Refresh now</button>
+    </div>
+    <p id="checkSummary" class="hint"></p>
+    <p id="checkDisclaimer" class="hint"></p>
+    <div id="checkClocks" class="compare-grid"></div>
+    <div id="checkAction" class="compare-grid"></div>
+    <div id="checkItems" class="big-move-list"></div>
+    <div id="checkQuotes" class="compare-grid"></div>
+  </section>
+
+  <section class="section">
     <h2>Live bias</h2>
     <p class="hint">Near-live prices + historical UK→US odds for today’s lead. This is a bias from history, not a prediction.</p>
     <div class="controls compare-controls">

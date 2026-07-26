@@ -238,3 +238,23 @@ button.linkish {
   display: block;
   image-rendering: pixelated;
 }
+
+.check-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.check-table th, .check-table td {
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid var(--line);
+}
+.check-pass { color: var(--accent); font-weight: 600; }
+.check-fail { color: var(--down); font-weight: 600; }
+.check-action {
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.clock-open { color: var(--accent); }
+.clock-closed { color: var(--muted); }

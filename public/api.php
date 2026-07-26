@@ -18,6 +18,7 @@ use Stocks\ScenarioAnalyzer;
 use Stocks\SessionFilter;
 use Stocks\StatsService;
 use Stocks\SymbolSessions;
+use Stocks\TradeChecklistService;
 use Stocks\WeekCompare;
 use Stocks\YahooFinanceClient;
 
@@ -301,6 +302,43 @@ try {
             $bars = $repo->barsForSymbol($sym);
             $result = (new RsiAnalyzer())->analyze($bars, $sym, $interval, 14, 30.0, 70.0, $forward);
             echo json_encode(['ok' => true, 'rsi' => $result]);
+            break;
+        }
+
+        case 'checklist': {
+            $uk = strtoupper((string) ($_GET['uk'] ?? 'EQQQ'));
+            $us = strtoupper((string) ($_GET['us'] ?? 'SOXL'));
+            if (!in_array($uk, ['EQQQ', 'FTSE'], true)) {
+                $uk = 'EQQQ';
+            }
+            if (!in_array($us, ['SOXL', 'QQQ'], true)) {
+                $us = 'SOXL';
+            }
+            $threshold = isset($_GET['threshold_pct']) ? (float) $_GET['threshold_pct'] : 0.3;
+            $allowed = [0.2, 0.3, 0.5, 1.0];
+            $okT = false;
+            foreach ($allowed as $t) {
+                if (abs($threshold - $t) < 0.001) {
+                    $threshold = $t;
+                    $okT = true;
+                    break;
+                }
+            }
+            if (!$okT) {
+                $threshold = 0.3;
+            }
+            $syncLive = !isset($_GET['sync']) || $_GET['sync'] !== '0';
+            $meta = SymbolSessions::all($config);
+            $yahoo = new YahooFinanceClient(
+                requestDelayMs: (int) ($config['request_delay_ms'] ?? 150)
+            );
+            $result = (new TradeChecklistService(
+                new LiveBiasService($yahoo, new GlobalLeadLag($stats)),
+                new RsiAnalyzer(),
+                $repo,
+                $yahoo
+            ))->build($meta, $config, $uk, $us, $threshold, $syncLive);
+            echo json_encode($result);
             break;
         }
 

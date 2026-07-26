@@ -10,6 +10,34 @@ namespace Stocks;
 final class RsiAnalyzer
 {
     /**
+     * Latest RSI + volume z-score snapshot for live checklist.
+     *
+     * @param list<array{price:float,volume?:?int,minute_of_day?:int,session_date?:string,ts_et?:string}> $bars1m
+     * @return array{symbol:string,interval_minutes:int,rsi:?float,vol_z:?float,price:?float,volume:?int,ts:?string,date:?string,time:?string}
+     */
+    public function latestSnapshot(
+        array $bars1m,
+        string $symbol,
+        int $intervalMinutes = 5,
+        int $rsiPeriod = 14
+    ): array {
+        $series = $this->aggregate($bars1m, $intervalMinutes);
+        $withRsi = $this->attachRsi($series, $rsiPeriod);
+        $last = $withRsi === [] ? null : $withRsi[count($withRsi) - 1];
+        return [
+            'symbol' => $symbol,
+            'interval_minutes' => $intervalMinutes,
+            'rsi' => $last['rsi'] ?? null,
+            'vol_z' => $last['vol_z'] ?? null,
+            'price' => $last['price'] ?? null,
+            'volume' => $last['volume'] ?? null,
+            'ts' => $last['ts'] ?? null,
+            'date' => $last['date'] ?? null,
+            'time' => $last['time'] ?? null,
+        ];
+    }
+
+    /**
      * @param list<array{price:float,volume?:?int,minute_of_day?:int,session_date?:string,ts_et?:string}> $bars1m
      * @return array<string,mixed>
      */

@@ -10,6 +10,8 @@
   let globalData = null;
   let liveBiasData = null;
   let liveBiasTimer = null;
+  let checklistTimer = null;
+  let checklistRefreshSec = 60;
 
   function fmtDate(iso) {
     if (!iso) return "—";
@@ -62,6 +64,110 @@
     try { loadGlobalLead(); } catch (e) { console.error(e); }
     try { loadLiveBias(); } catch (e) { console.error(e); }
     try { loadRsi(); } catch (e) { console.error(e); }
+    try { loadChecklist(); } catch (e) { console.error(e); }
+  }
+
+  async function loadChecklist() {
+    const uk = $("checkUk")?.value || "EQQQ";
+    const us = $("checkUs")?.value || "SOXL";
+    const threshold = $("checkThreshold")?.value || "0.3";
+    if ($("checkSummary")) $("checkSummary").textContent = "Refreshing checklist + live bars…";
+    const url = `api.php?action=checklist&uk=${encodeURIComponent(uk)}&us=${encodeURIComponent(us)}&threshold_pct=${encodeURIComponent(threshold)}&sync=1`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!data.ok) {
+        if ($("checkSummary")) $("checkSummary").textContent = data.error || "Checklist failed";
+        return;
+      }
+      renderChecklist(data);
+      const next = Number(data.refresh_seconds) || 60;
+      if (next !== checklistRefreshSec) {
+        checklistRefreshSec = next;
+        if (checklistTimer) clearInterval(checklistTimer);
+        checklistTimer = setInterval(() => {
+          try { loadChecklist(); } catch (e) { /* ignore */ }
+        }, checklistRefreshSec * 1000);
+      }
+    } catch (e) {
+      if ($("checkSummary")) $("checkSummary").textContent = "Checklist error: " + e.message;
+    }
+  }
+
+  function renderChecklist(d) {
+    if (!d || !$("checkSummary")) return;
+    $("checkSummary").textContent = d.summary_text || "";
+    if ($("checkDisclaimer")) $("checkDisclaimer").textContent = d.disclaimer || "";
+
+    const clocks = d.markets || {};
+    $("checkClocks").innerHTML = ["london", "new_york"].map((k) => {
+      const c = clocks[k];
+      if (!c) return "";
+      const cls = c.open ? "clock-open" : "clock-closed";
+      return `<div class="path-card">
+        <h3>${c.label}</h3>
+        <p class="${cls}"><strong>${c.open ? "OPEN" : "CLOSED"}</strong></p>
+        <p>${c.local_time}</p>
+        <p class="hint">Session ${c.session}</p>
+      </div>`;
+    }).join("") + `<div class="path-card">
+      <h3>Auto refresh</h3>
+      <p>Every <strong>${d.refresh_seconds || 60}s</strong></p>
+      <p>UTC ${d.as_of_utc || "—"}</p>
+      <p class="hint">${d.monday_ready ? "Monday-ready: syncs 1m bars on each refresh" : ""}</p>
+    </div>`;
+
+    const action = d.action || "WAIT";
+    const actionCls = action.includes("LONG") ? "up" : (action.includes("SHORT") ? "down" : "high");
+    const snap = d.rsi_snapshot || {};
+    $("checkAction").innerHTML = `
+      <div class="path-card">
+        <h3>Action</h3>
+        <p class="check-action ${actionCls}">${action.replaceAll("_", " ")}</p>
+        <p>Pass <strong>${d.pass_count ?? 0}</strong> / ${d.total ?? 0}</p>
+      </div>
+      <div class="path-card">
+        <h3>${d.us_symbol} RSI now</h3>
+        <p>RSI(14) 5m: <strong>${snap.rsi != null ? Number(snap.rsi).toFixed(1) : "—"}</strong></p>
+        <p>Vol z: <strong>${snap.vol_z != null ? Number(snap.vol_z).toFixed(2) : "—"}</strong></p>
+        <p class="hint">${snap.date || ""} ${snap.time || ""} · ${snap.price ?? ""}</p>
+      </div>
+      <div class="path-card">
+        <h3>UK lead</h3>
+        <p>${d.uk_symbol}: <strong>${d.live?.lead?.pct == null ? "—" : ((d.live.lead.pct >= 0 ? "+" : "") + d.live.lead.pct + "%")}</strong></p>
+        <p>Direction: <strong>${d.live?.lead?.direction || "—"}</strong></p>
+        <p>Hist follow: <strong>${d.live?.odds?.follow_pct ?? "—"}%</strong></p>
+      </div>
+    `;
+
+    const rows = (d.items || []).map((it) => {
+      const pass = !!it.pass;
+      return `<tr>
+        <td>${it.label}</td>
+        <td class="${pass ? "check-pass" : "check-fail"}">${pass ? "PASS" : "FAIL"}</td>
+        <td>${it.value ?? "—"}</td>
+        <td>${it.detail || ""}</td>
+      </tr>`;
+    }).join("");
+    $("checkItems").innerHTML = `
+      <div class="table-wrap">
+        <table class="check-table">
+          <thead><tr><th>Check</th><th>Result</th><th>Value</th><th>Note</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+
+    $("checkQuotes").innerHTML = (d.live?.quotes || []).map((q) => {
+      const cls = (q.change_pct ?? 0) >= 0 ? "up" : "down";
+      const ch = q.change_pct == null ? "—" : `${q.change_pct >= 0 ? "+" : ""}${q.change_pct}%`;
+      return `<div class="path-card">
+        <h3>${q.symbol}</h3>
+        <p><strong>${q.price}</strong> ${q.currency || ""}</p>
+        <p class="${cls}">${ch}</p>
+        <p class="hint">${q.exchange || ""} · ${q.as_of_utc || ""}</p>
+      </div>`;
+    }).join("");
   }
 
   async function loadRsi() {
@@ -1060,6 +1166,14 @@
   ["rsiSymbol", "rsiInterval", "rsiForward"].forEach((id) => {
     $(id)?.addEventListener("change", loadRsi);
   });
+
+  $("runChecklist")?.addEventListener("click", loadChecklist);
+  ["checkUk", "checkUs", "checkThreshold"].forEach((id) => {
+    $(id)?.addEventListener("change", loadChecklist);
+  });
+  checklistTimer = setInterval(() => {
+    try { loadChecklist(); } catch (e) { /* ignore */ }
+  }, checklistRefreshSec * 1000);
 
   $("reload").addEventListener("click", load);
   $("symbol").addEventListener("change", load);
