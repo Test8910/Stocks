@@ -11,6 +11,7 @@ use Stocks\BigMoveDetector;
 use Stocks\Database;
 use Stocks\PatternEngine;
 use Stocks\PriceRepository;
+use Stocks\ScenarioAnalyzer;
 use Stocks\SessionFilter;
 use Stocks\StatsService;
 use Stocks\WeekCompare;
@@ -281,6 +282,86 @@ try {
         case 'summary':
             echo json_encode($buildSummary());
             break;
+
+        case 'scenario': {
+            [$interval] = $parseOptions($config);
+            $paths = $stats->aggregatePaths($stats->sessionPaths($symbol), $interval);
+
+            $presets = ScenarioAnalyzer::windowPresets();
+            $windowId = (string) ($_GET['window'] ?? '0930_1000');
+            $from = isset($_GET['from']) ? (int) $_GET['from'] : null;
+            $to = isset($_GET['to']) ? (int) $_GET['to'] : null;
+            foreach ($presets as $p) {
+                if ($p['id'] === $windowId) {
+                    $from = $p['from'];
+                    $to = $p['to'];
+                    break;
+                }
+            }
+            if ($from === null || $to === null) {
+                $from = 0;
+                $to = 30;
+            }
+
+            $direction = (string) ($_GET['direction'] ?? 'down');
+            if (!in_array($direction, ['down', 'up'], true)) {
+                $direction = 'down';
+            }
+            $measure = (string) ($_GET['measure'] ?? 'end');
+            if (!in_array($measure, ['end', 'maxdd'], true)) {
+                $measure = 'end';
+            }
+            $threshold = isset($_GET['threshold_pct']) ? (float) $_GET['threshold_pct'] : 1.0;
+            $allowedThresh = [0.3, 0.5, 1.0, 1.5, 2.0, 3.0];
+            // allow near matches for floats
+            $okThresh = false;
+            foreach ($allowedThresh as $t) {
+                if (abs($threshold - $t) < 0.001) {
+                    $threshold = $t;
+                    $okThresh = true;
+                    break;
+                }
+            }
+            if (!$okThresh) {
+                $threshold = 1.0;
+            }
+            $nextMinutes = isset($_GET['next_minutes']) ? (int) $_GET['next_minutes'] : 60;
+            if (!in_array($nextMinutes, [30, 60, 90, 120], true)) {
+                $nextMinutes = 60;
+            }
+            $weekday = isset($_GET['weekday']) && $_GET['weekday'] !== '' && $_GET['weekday'] !== 'all'
+                ? (int) $_GET['weekday']
+                : null;
+            if ($weekday !== null && ($weekday < 1 || $weekday > 5)) {
+                $weekday = null;
+            }
+
+            $analyzer = new ScenarioAnalyzer($session);
+            $result = $analyzer->analyzeDrop(
+                $paths,
+                $symbol,
+                $from,
+                $to,
+                $threshold,
+                $direction,
+                $measure,
+                $nextMinutes,
+                $weekday
+            );
+            // strip heavy per-point paths from match list for payload size; keep median + match meta
+            foreach ($result['matches'] as &$m) {
+                unset($m['norm_path']);
+            }
+            unset($m);
+
+            echo json_encode([
+                'ok' => true,
+                'interval_minutes' => $interval,
+                'windows' => $presets,
+                'scenario' => $result,
+            ]);
+            break;
+        }
 
         default:
             http_response_code(400);

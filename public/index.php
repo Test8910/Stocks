@@ -64,6 +64,76 @@
   <p id="meta" class="meta">Loading…</p>
 
   <section class="section">
+    <h2>Scenario: if it drops X% in a time window</h2>
+    <p class="hint">If price drops (or rises) a set % in a chosen window, what usually happens next? Uses selected Symbol + Interval.</p>
+    <div class="controls compare-controls">
+      <label>
+        Window
+        <select id="scenarioWindow">
+          <option value="0930_1000" selected>09:30–10:00</option>
+          <option value="0930_1030">09:30–10:30</option>
+          <option value="1000_1100">10:00–11:00</option>
+          <option value="1100_1200">11:00–12:00</option>
+          <option value="1300_1400">13:00–14:00</option>
+          <option value="1400_1500">14:00–15:00</option>
+        </select>
+      </label>
+      <label>
+        Direction
+        <select id="scenarioDirection">
+          <option value="down" selected>Drop</option>
+          <option value="up">Rise</option>
+        </select>
+      </label>
+      <label>
+        Threshold
+        <select id="scenarioThreshold">
+          <option value="0.3">0.3%</option>
+          <option value="0.5">0.5%</option>
+          <option value="1" selected>1%</option>
+          <option value="1.5">1.5%</option>
+          <option value="2">2%</option>
+          <option value="3">3%</option>
+        </select>
+      </label>
+      <label>
+        Measure
+        <select id="scenarioMeasure">
+          <option value="end" selected>End of window</option>
+          <option value="maxdd">Max plunge in window</option>
+        </select>
+      </label>
+      <label>
+        Next period
+        <select id="scenarioNext">
+          <option value="30">Next 30m</option>
+          <option value="60" selected>Next 60m</option>
+          <option value="90">Next 90m</option>
+          <option value="120">Next 120m</option>
+        </select>
+      </label>
+      <label>
+        Weekday
+        <select id="scenarioWeekday">
+          <option value="all" selected>All</option>
+          <option value="1">Mon</option>
+          <option value="2">Tue</option>
+          <option value="3">Wed</option>
+          <option value="4">Thu</option>
+          <option value="5">Fri</option>
+        </select>
+      </label>
+      <button type="button" id="runScenario">Analyze</button>
+    </div>
+    <p id="scenarioSummaryText" class="hint"></p>
+    <div id="scenarioCards" class="compare-grid"></div>
+    <div id="scenarioMatches" class="big-move-list"></div>
+    <div class="chart-wrap">
+      <canvas id="scenarioPathChart" height="120"></canvas>
+    </div>
+  </section>
+
+  <section class="section">
     <h2>Last 4 weekdays comparison</h2>
     <p class="hint">Compare up to 4 days — last 4 trading days, or the last 4 Mondays/Tuesdays/… Uses your selected Interval and Move size.</p>
     <div class="controls compare-controls">

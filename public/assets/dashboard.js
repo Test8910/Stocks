@@ -5,6 +5,8 @@
   let avgPriceChart = null;
   let compareNormChart = null;
   let comparePriceChart = null;
+  let scenarioPathChart = null;
+  let scenarioData = null;
 
   function fmtDate(iso) {
     if (!iso) return "—";
@@ -53,6 +55,108 @@
     try { renderLowHigh(); } catch (e) { console.error(e); }
     try { renderPatterns(); } catch (e) { console.error(e); }
     try { renderHeat(); } catch (e) { console.error(e); }
+    try { loadScenario(); } catch (e) { console.error(e); }
+  }
+
+  async function loadScenario() {
+    const symbol = $("symbol").value;
+    const interval = $("interval").value;
+    const windowId = $("scenarioWindow").value;
+    const direction = $("scenarioDirection").value;
+    const threshold = $("scenarioThreshold").value;
+    const measure = $("scenarioMeasure").value;
+    const nextMinutes = $("scenarioNext").value;
+    const weekday = $("scenarioWeekday").value;
+    $("scenarioSummaryText").textContent = "Analyzing scenario…";
+    const url = `api.php?action=scenario&symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&window=${encodeURIComponent(windowId)}&direction=${encodeURIComponent(direction)}&threshold_pct=${encodeURIComponent(threshold)}&measure=${encodeURIComponent(measure)}&next_minutes=${encodeURIComponent(nextMinutes)}&weekday=${encodeURIComponent(weekday)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data.ok) {
+      $("scenarioSummaryText").textContent = data.error || "Scenario failed";
+      return;
+    }
+    scenarioData = data.scenario;
+    renderScenario();
+  }
+
+  function renderScenario() {
+    const s = scenarioData;
+    if (!s) return;
+    $("scenarioSummaryText").textContent = s.summary_text || "";
+    const o = s.outcomes || {};
+    const goodLabel = s.labels?.primary_good || "Bounce";
+    const badLabel = s.labels?.primary_bad || "Continue";
+    const strengthClass = s.strength === "usable" ? "up" : (s.strength === "weak" ? "high" : "down");
+
+    $("scenarioCards").innerHTML = `
+      <div class="path-card">
+        <h3>Setup</h3>
+        <p><strong>${s.symbol}</strong> · ${s.from_time}–${s.to_time}</p>
+        <p>${s.direction === "down" ? "Drop" : "Rise"} ≥ <strong>${s.threshold_pct}%</strong> (${s.measure === "maxdd" ? "max plunge" : "end of window"})</p>
+        <p>Matches: <strong>${s.n}</strong> · <span class="${strengthClass}">${s.strength}</span></p>
+      </div>
+      <div class="path-card">
+        <h3>Next ${s.next_minutes}m (to ${s.next_end_time})</h3>
+        <p class="up">${goodLabel}: <strong>${o.next_bounce_or_fade_pct ?? "—"}%</strong> (${o.next_bounce_or_fade_n ?? 0})</p>
+        <p class="down">${badLabel}: <strong>${o.next_continue_pct ?? "—"}%</strong> (${o.next_continue_n ?? 0})</p>
+        <p>Avg next change: <strong>${o.avg_next_ret != null ? ((o.avg_next_ret >= 0 ? "+" : "") + o.avg_next_ret + "%") : "—"}</strong></p>
+      </div>
+      <div class="path-card">
+        <h3>Later / close</h3>
+        <p>Rest of day up: <strong>${o.rest_up_pct ?? "—"}%</strong></p>
+        <p>Close green: <strong>${o.close_up_pct ?? "—"}%</strong></p>
+      </div>
+      <div class="path-card">
+        <h3>By weekday</h3>
+        <ul class="session-moves">
+          ${(s.by_weekday || []).filter((w) => w.n > 0).map((w) => `<li>${w.label}: <strong>${w.n}</strong> day(s)</li>`).join("") || "<li>None</li>"}
+        </ul>
+      </div>
+    `;
+
+    const rows = (s.matches || []).map((m) => {
+      const next = m.next_ret == null ? "—" : `${m.next_ret >= 0 ? "+" : ""}${m.next_ret}%`;
+      const day = m.day_ret == null ? "—" : `${m.day_ret >= 0 ? "+" : ""}${m.day_ret}%`;
+      const nextCls = (m.next_ret ?? 0) >= 0 ? "up" : "down";
+      return `<tr>
+        <td>${fmtDate(m.date)}</td>
+        <td>${m.label}</td>
+        <td class="down">${m.setup_ret}%</td>
+        <td class="${nextCls}">${next}</td>
+        <td>${day}</td>
+      </tr>`;
+    }).join("");
+
+    $("scenarioMatches").innerHTML = `
+      <div class="table-wrap">
+        <table class="moves-table">
+          <thead><tr><th>Date</th><th>Day</th><th>Setup</th><th>Next ${s.next_minutes}m</th><th>Day</th></tr></thead>
+          <tbody>${rows || "<tr><td colspan='5'>No matching days</td></tr>"}</tbody>
+        </table>
+      </div>
+    `;
+
+    if (typeof Chart === "undefined") return;
+    const times = s.median_path?.times || [];
+    const values = s.median_path?.values || [];
+    if (scenarioPathChart) scenarioPathChart.destroy();
+    scenarioPathChart = new Chart($("scenarioPathChart").getContext("2d"), {
+      type: "line",
+      data: {
+        labels: times,
+        datasets: [{
+          label: `Median path after ${s.to_time} (100 = setup end)`,
+          data: values,
+          borderColor: s.direction === "down" ? "#e06c75" : "#3dbb8b",
+          backgroundColor: s.direction === "down" ? "rgba(224,108,117,0.12)" : "rgba(61,187,139,0.12)",
+          fill: true,
+          pointRadius: 0,
+          borderWidth: 2,
+          tension: 0.15,
+        }],
+      },
+      options: chartOptions("Indexed price (100 = end of setup)"),
+    });
   }
 
   function renderCompare() {
@@ -626,5 +730,9 @@
   $("runCompare").addEventListener("click", load);
   $("comparePreset").addEventListener("change", load);
   $("compareLimit").addEventListener("change", load);
+  $("runScenario").addEventListener("click", loadScenario);
+  ["scenarioWindow", "scenarioDirection", "scenarioThreshold", "scenarioMeasure", "scenarioNext", "scenarioWeekday"].forEach((id) => {
+    $(id).addEventListener("change", loadScenario);
+  });
   load();
 })();
