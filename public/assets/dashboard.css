@@ -154,6 +154,16 @@ button.linkish {
   font: inherit;
 }
 
+.compare-controls { margin: 0.75rem 0 1rem; }
+.compare-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.path-card.compare-a { border-color: #3dbb8b; }
+.path-card.compare-b { border-color: #7ec8ff; }
+
 .big-move-list { margin-top: 1rem; }
 .table-wrap {
   overflow-x: auto;

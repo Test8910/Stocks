@@ -64,6 +64,35 @@
   <p id="meta" class="meta">Loading…</p>
 
   <section class="section">
+    <h2>Week-over-week comparison</h2>
+    <p class="hint">Compare the same weekday across weeks (example: 24-07-2026 vs 17-07-2026). Uses your selected Interval and Move size.</p>
+    <div class="controls compare-controls">
+      <label>
+        Recent day
+        <select id="compareA"></select>
+      </label>
+      <label>
+        Prior week
+        <select id="compareB"></select>
+      </label>
+      <label>
+        Quick pair
+        <select id="comparePair">
+          <option value="">Custom dates</option>
+        </select>
+      </label>
+      <button type="button" id="runCompare">Compare</button>
+    </div>
+    <div id="compareSummary" class="compare-grid"></div>
+    <div class="chart-wrap">
+      <canvas id="compareNormChart" height="120"></canvas>
+    </div>
+    <div class="chart-wrap" style="margin-top:0.75rem">
+      <canvas id="comparePriceChart" height="110"></canvas>
+    </div>
+  </section>
+
+  <section class="section">
     <h2 id="bigMoveTitle">$5 and up moves — when they happen</h2>
     <p id="bigMoveHint" class="hint">Swings of <strong>$5 or more</strong> (up or down). Use Move size for $5 / $7 / $9 / $11.</p>
     <div id="bigMoveTiming" class="lowhigh"></div>

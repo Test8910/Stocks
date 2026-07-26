@@ -13,6 +13,7 @@ use Stocks\PatternEngine;
 use Stocks\PriceRepository;
 use Stocks\SessionFilter;
 use Stocks\StatsService;
+use Stocks\WeekCompare;
 
 try {
     $pdo = Database::pdo($config);
@@ -153,6 +154,15 @@ try {
             $times[] = $session->minuteLabel($m);
         }
 
+        $dateA = isset($_GET['date_a']) ? (string) $_GET['date_a'] : null;
+        $dateB = isset($_GET['date_b']) ? (string) $_GET['date_b'] : null;
+        $weekCompare = (new WeekCompare($session))->build(
+            $paths,
+            $bigMoves['moves'] ?? [],
+            $dateA,
+            $dateB
+        );
+
         return [
             'ok' => true,
             'symbol' => $symbol,
@@ -169,6 +179,7 @@ try {
             'sessions' => $paths,
             'weekday_avg_price' => $buildWeekdayAvgs($paths, $interval),
             'big_moves' => $bigMoves,
+            'week_compare' => $weekCompare,
             'options' => [
                 'interval_minutes' => $interval,
                 'min_dollars' => $minDollars,
