@@ -287,33 +287,13 @@ try {
             [$interval] = $parseOptions($config);
             $paths = $stats->aggregatePaths($stats->sessionPaths($symbol), $interval);
 
-            $presets = ScenarioAnalyzer::windowPresets();
-            $windowId = (string) ($_GET['window'] ?? '0930_1000');
-            $from = isset($_GET['from']) ? (int) $_GET['from'] : null;
-            $to = isset($_GET['to']) ? (int) $_GET['to'] : null;
-            foreach ($presets as $p) {
-                if ($p['id'] === $windowId) {
-                    $from = $p['from'];
-                    $to = $p['to'];
-                    break;
-                }
-            }
-            if ($from === null || $to === null) {
-                $from = 0;
-                $to = 30;
+            $mode = (string) ($_GET['mode'] ?? 'drop');
+            if (!in_array($mode, ['drop', 'open', 'shape', 'cross'], true)) {
+                $mode = 'drop';
             }
 
-            $direction = (string) ($_GET['direction'] ?? 'down');
-            if (!in_array($direction, ['down', 'up'], true)) {
-                $direction = 'down';
-            }
-            $measure = (string) ($_GET['measure'] ?? 'end');
-            if (!in_array($measure, ['end', 'maxdd'], true)) {
-                $measure = 'end';
-            }
             $threshold = isset($_GET['threshold_pct']) ? (float) $_GET['threshold_pct'] : 1.0;
             $allowedThresh = [0.3, 0.5, 1.0, 1.5, 2.0, 3.0];
-            // allow near matches for floats
             $okThresh = false;
             foreach ($allowedThresh as $t) {
                 if (abs($threshold - $t) < 0.001) {
@@ -323,8 +303,9 @@ try {
                 }
             }
             if (!$okThresh) {
-                $threshold = 1.0;
+                $threshold = $mode === 'open' || $mode === 'shape' ? 0.5 : 1.0;
             }
+
             $nextMinutes = isset($_GET['next_minutes']) ? (int) $_GET['next_minutes'] : 60;
             if (!in_array($nextMinutes, [30, 60, 90, 120], true)) {
                 $nextMinutes = 60;
@@ -337,18 +318,130 @@ try {
             }
 
             $analyzer = new ScenarioAnalyzer($session);
-            $result = $analyzer->analyzeDrop(
-                $paths,
-                $symbol,
-                $from,
-                $to,
-                $threshold,
-                $direction,
-                $measure,
-                $nextMinutes,
-                $weekday
-            );
-            // strip heavy per-point paths from match list for payload size; keep median + match meta
+            $presets = ScenarioAnalyzer::windowPresets();
+            $openPresets = ScenarioAnalyzer::openWindowPresets();
+            $shapePresets = ScenarioAnalyzer::shapePresets();
+
+            if ($mode === 'open') {
+                $windowId = (string) ($_GET['window'] ?? 'first_30');
+                $to = 30;
+                foreach ($openPresets as $p) {
+                    if ($p['id'] === $windowId) {
+                        $to = $p['to'];
+                        break;
+                    }
+                }
+                $condition = (string) ($_GET['direction'] ?? $_GET['condition'] ?? 'up');
+                if (!in_array($condition, ['up', 'down', 'flat'], true)) {
+                    $condition = 'up';
+                }
+                $result = $analyzer->analyzeOpenDrive(
+                    $paths,
+                    $symbol,
+                    $to,
+                    $condition,
+                    $threshold,
+                    $nextMinutes,
+                    $weekday
+                );
+            } elseif ($mode === 'shape') {
+                $shape = (string) ($_GET['shape'] ?? 'v_reclaim');
+                $setupEnd = isset($_GET['setup_end']) ? (int) $_GET['setup_end'] : 60;
+                if (!in_array($setupEnd, [30, 45, 60, 90], true)) {
+                    $setupEnd = 60;
+                }
+                $result = $analyzer->analyzeShape(
+                    $paths,
+                    $symbol,
+                    $shape,
+                    $setupEnd,
+                    $threshold,
+                    $nextMinutes,
+                    $weekday
+                );
+            } elseif ($mode === 'cross') {
+                $leadSymbol = strtoupper((string) ($_GET['lead'] ?? 'QQQ'));
+                $followSymbol = strtoupper((string) ($_GET['follow'] ?? $symbol));
+                if ($leadSymbol === $followSymbol) {
+                    $leadSymbol = $followSymbol === 'SOXL' ? 'QQQ' : 'SOXL';
+                }
+                $pair = (string) ($_GET['pair'] ?? '');
+                if ($pair === 'soxl_qqq') {
+                    $leadSymbol = 'SOXL';
+                    $followSymbol = 'QQQ';
+                } elseif ($pair === 'qqq_soxl' || $pair === '') {
+                    $leadSymbol = 'QQQ';
+                    $followSymbol = 'SOXL';
+                }
+                $windowId = (string) ($_GET['window'] ?? 'first_30');
+                $to = 30;
+                foreach ($openPresets as $p) {
+                    if ($p['id'] === $windowId) {
+                        $to = $p['to'];
+                        break;
+                    }
+                }
+                // also allow drop window ids
+                foreach ($presets as $p) {
+                    if ($p['id'] === $windowId) {
+                        $to = $p['to'];
+                        break;
+                    }
+                }
+                $direction = (string) ($_GET['direction'] ?? 'down');
+                if (!in_array($direction, ['down', 'up'], true)) {
+                    $direction = 'down';
+                }
+                $leadPaths = $stats->aggregatePaths($stats->sessionPaths($leadSymbol), $interval);
+                $followPaths = $stats->aggregatePaths($stats->sessionPaths($followSymbol), $interval);
+                $result = $analyzer->analyzeCross(
+                    $leadPaths,
+                    $followPaths,
+                    $leadSymbol,
+                    $followSymbol,
+                    $to,
+                    $direction,
+                    $threshold,
+                    $nextMinutes,
+                    $weekday
+                );
+            } else {
+                $windowId = (string) ($_GET['window'] ?? '0930_1000');
+                $from = isset($_GET['from']) ? (int) $_GET['from'] : null;
+                $to = isset($_GET['to']) ? (int) $_GET['to'] : null;
+                foreach ($presets as $p) {
+                    if ($p['id'] === $windowId) {
+                        $from = $p['from'];
+                        $to = $p['to'];
+                        break;
+                    }
+                }
+                if ($from === null || $to === null) {
+                    $from = 0;
+                    $to = 30;
+                }
+
+                $direction = (string) ($_GET['direction'] ?? 'down');
+                if (!in_array($direction, ['down', 'up'], true)) {
+                    $direction = 'down';
+                }
+                $measure = (string) ($_GET['measure'] ?? 'end');
+                if (!in_array($measure, ['end', 'maxdd'], true)) {
+                    $measure = 'end';
+                }
+                $result = $analyzer->analyzeDrop(
+                    $paths,
+                    $symbol,
+                    $from,
+                    $to,
+                    $threshold,
+                    $direction,
+                    $measure,
+                    $nextMinutes,
+                    $weekday
+                );
+            }
+
             foreach ($result['matches'] as &$m) {
                 unset($m['norm_path']);
             }
@@ -357,7 +450,10 @@ try {
             echo json_encode([
                 'ok' => true,
                 'interval_minutes' => $interval,
+                'mode' => $mode,
                 'windows' => $presets,
+                'open_windows' => $openPresets,
+                'shapes' => $shapePresets,
                 'scenario' => $result,
             ]);
             break;

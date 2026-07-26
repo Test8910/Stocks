@@ -64,10 +64,19 @@
   <p id="meta" class="meta">Loading…</p>
 
   <section class="section">
-    <h2>Scenario: if it drops X% in a time window</h2>
-    <p class="hint">If price drops (or rises) a set % in a chosen window, what usually happens next? Uses selected Symbol + Interval.</p>
+    <h2>Scenario explorer</h2>
+    <p class="hint" id="scenarioHint">If → Then patterns from history. Uses selected Symbol + Interval. Small N is labeled weak / too few.</p>
     <div class="controls compare-controls">
       <label>
+        Mode
+        <select id="scenarioMode">
+          <option value="drop" selected>Drop / rise %</option>
+          <option value="open">Open drive</option>
+          <option value="shape">Morning shape</option>
+          <option value="cross">QQQ ↔ SOXL</option>
+        </select>
+      </label>
+      <label id="scenarioWindowLabel">
         Window
         <select id="scenarioWindow">
           <option value="0930_1000" selected>09:30–10:00</option>
@@ -78,14 +87,31 @@
           <option value="1400_1500">14:00–15:00</option>
         </select>
       </label>
-      <label>
+      <label id="scenarioShapeLabel" hidden>
+        Shape
+        <select id="scenarioShape">
+          <option value="v_reclaim" selected>V reclaim</option>
+          <option value="waterfall">Waterfall dump</option>
+          <option value="spike_fade">Spike then fade</option>
+          <option value="grind_up">Grind up</option>
+        </select>
+      </label>
+      <label id="scenarioPairLabel" hidden>
+        Lead → follow
+        <select id="scenarioPair">
+          <option value="qqq_soxl" selected>QQQ → SOXL</option>
+          <option value="soxl_qqq">SOXL → QQQ</option>
+        </select>
+      </label>
+      <label id="scenarioDirectionLabel">
         Direction
         <select id="scenarioDirection">
           <option value="down" selected>Drop</option>
           <option value="up">Rise</option>
+          <option value="flat" hidden>Flat</option>
         </select>
       </label>
-      <label>
+      <label id="scenarioThresholdLabel">
         Threshold
         <select id="scenarioThreshold">
           <option value="0.3">0.3%</option>
@@ -96,11 +122,19 @@
           <option value="3">3%</option>
         </select>
       </label>
-      <label>
+      <label id="scenarioMeasureLabel">
         Measure
         <select id="scenarioMeasure">
           <option value="end" selected>End of window</option>
           <option value="maxdd">Max plunge in window</option>
+        </select>
+      </label>
+      <label id="scenarioSetupEndLabel" hidden>
+        Shape window
+        <select id="scenarioSetupEnd">
+          <option value="30">First 30m</option>
+          <option value="60" selected>First 60m</option>
+          <option value="90">First 90m</option>
         </select>
       </label>
       <label>

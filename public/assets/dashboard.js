@@ -58,17 +58,73 @@
     try { loadScenario(); } catch (e) { console.error(e); }
   }
 
+  const DROP_WINDOWS = `
+    <option value="0930_1000">09:30–10:00</option>
+    <option value="0930_1030">09:30–10:30</option>
+    <option value="1000_1100">10:00–11:00</option>
+    <option value="1100_1200">11:00–12:00</option>
+    <option value="1300_1400">13:00–14:00</option>
+    <option value="1400_1500">14:00–15:00</option>`;
+  const OPEN_WINDOWS = `
+    <option value="first_15">First 15m (→09:45)</option>
+    <option value="first_30" selected>First 30m (→10:00)</option>
+    <option value="first_60">First 60m (→10:30)</option>`;
+
+  function syncScenarioControls() {
+    const mode = $("scenarioMode").value;
+    const win = $("scenarioWindow");
+    const dir = $("scenarioDirection");
+    const flatOpt = dir.querySelector('option[value="flat"]');
+    const isDrop = mode === "drop";
+    const isOpen = mode === "open";
+    const isShape = mode === "shape";
+    const isCross = mode === "cross";
+
+    $("scenarioWindowLabel").hidden = isShape;
+    $("scenarioShapeLabel").hidden = !isShape;
+    $("scenarioPairLabel").hidden = !isCross;
+    $("scenarioDirectionLabel").hidden = isShape;
+    $("scenarioMeasureLabel").hidden = !isDrop;
+    $("scenarioSetupEndLabel").hidden = !isShape;
+    $("scenarioThresholdLabel").hidden = false;
+
+    if (flatOpt) flatOpt.hidden = !isOpen;
+    if (!isOpen && dir.value === "flat") dir.value = "down";
+
+    const wantOpenWindows = isOpen || isCross;
+    const currentlyOpen = win.options.length === 3 && String(win.options[0].value).startsWith("first_");
+    if (wantOpenWindows && !currentlyOpen) {
+      win.innerHTML = OPEN_WINDOWS;
+    } else if (!wantOpenWindows && currentlyOpen) {
+      win.innerHTML = DROP_WINDOWS;
+      win.value = "0930_1000";
+    }
+
+    const hints = {
+      drop: "If price drops (or rises) a set % in a chosen window, what usually happens next?",
+      open: "If the open is up / down / flat into a cutoff, what usually happens next (incl. day high/low after)?",
+      shape: "Rule-based morning shapes (V, waterfall, spike-fade, grind) → afternoon path.",
+      cross: "If the lead symbol moves in the open window, what does the follow symbol do next?",
+    };
+    $("scenarioHint").textContent = hints[mode] || hints.drop;
+  }
+
   async function loadScenario() {
+    syncScenarioControls();
     const symbol = $("symbol").value;
     const interval = $("interval").value;
+    const mode = $("scenarioMode").value;
     const windowId = $("scenarioWindow").value;
     const direction = $("scenarioDirection").value;
     const threshold = $("scenarioThreshold").value;
     const measure = $("scenarioMeasure").value;
     const nextMinutes = $("scenarioNext").value;
     const weekday = $("scenarioWeekday").value;
+    const shape = $("scenarioShape").value;
+    const setupEnd = $("scenarioSetupEnd").value;
+    const pair = $("scenarioPair").value;
     $("scenarioSummaryText").textContent = "Analyzing scenario…";
-    const url = `api.php?action=scenario&symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&window=${encodeURIComponent(windowId)}&direction=${encodeURIComponent(direction)}&threshold_pct=${encodeURIComponent(threshold)}&measure=${encodeURIComponent(measure)}&next_minutes=${encodeURIComponent(nextMinutes)}&weekday=${encodeURIComponent(weekday)}`;
+    let url = `api.php?action=scenario&mode=${encodeURIComponent(mode)}&symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&window=${encodeURIComponent(windowId)}&direction=${encodeURIComponent(direction)}&threshold_pct=${encodeURIComponent(threshold)}&measure=${encodeURIComponent(measure)}&next_minutes=${encodeURIComponent(nextMinutes)}&weekday=${encodeURIComponent(weekday)}&shape=${encodeURIComponent(shape)}&setup_end=${encodeURIComponent(setupEnd)}&pair=${encodeURIComponent(pair)}`;
     const res = await fetch(url);
     const data = await res.json();
     if (!data.ok) {
@@ -87,12 +143,37 @@
     const goodLabel = s.labels?.primary_good || "Bounce";
     const badLabel = s.labels?.primary_bad || "Continue";
     const strengthClass = s.strength === "usable" ? "up" : (s.strength === "weak" ? "high" : "down");
+    const mode = s.mode || "drop";
+
+    let setupLines = "";
+    if (mode === "cross") {
+      setupLines = `
+        <p><strong>${s.lead_symbol}</strong> → <strong>${s.follow_symbol}</strong></p>
+        <p>${s.from_time}–${s.to_time}: lead ${s.direction === "down" ? "drop" : "rise"} ≥ <strong>${s.threshold_pct}%</strong></p>`;
+    } else if (mode === "shape") {
+      setupLines = `
+        <p><strong>${s.symbol}</strong> · shape <strong>${s.shape || s.condition}</strong></p>
+        <p>Morning to ${s.to_time} · thresh <strong>${s.threshold_pct}%</strong></p>`;
+    } else if (mode === "open") {
+      setupLines = `
+        <p><strong>${s.symbol}</strong> · open ${s.condition || s.direction}</p>
+        <p>By ${s.to_time} · thresh <strong>${s.threshold_pct}%</strong></p>`;
+    } else {
+      setupLines = `
+        <p><strong>${s.symbol}</strong> · ${s.from_time}–${s.to_time}</p>
+        <p>${s.direction === "down" ? "Drop" : "Rise"} ≥ <strong>${s.threshold_pct}%</strong> (${s.measure === "maxdd" ? "max plunge" : "end of window"})</p>`;
+    }
+
+    const extraLater = [];
+    if (o.high_after_pct != null) extraLater.push(`Day high after: <strong>${o.high_after_pct}%</strong>`);
+    if (o.low_after_pct != null) extraLater.push(`Day low after: <strong>${o.low_after_pct}%</strong>`);
+    if (o.giveback_50_pct != null) extraLater.push(`Giveback/recover ≥50%: <strong>${o.giveback_50_pct}%</strong>`);
+    if (o.same_direction_setup_pct != null) extraLater.push(`Same-dir morning: <strong>${o.same_direction_setup_pct}%</strong>`);
 
     $("scenarioCards").innerHTML = `
       <div class="path-card">
         <h3>Setup</h3>
-        <p><strong>${s.symbol}</strong> · ${s.from_time}–${s.to_time}</p>
-        <p>${s.direction === "down" ? "Drop" : "Rise"} ≥ <strong>${s.threshold_pct}%</strong> (${s.measure === "maxdd" ? "max plunge" : "end of window"})</p>
+        ${setupLines}
         <p>Matches: <strong>${s.n}</strong> · <span class="${strengthClass}">${s.strength}</span></p>
       </div>
       <div class="path-card">
@@ -105,6 +186,7 @@
         <h3>Later / close</h3>
         <p>Rest of day up: <strong>${o.rest_up_pct ?? "—"}%</strong></p>
         <p>Close green: <strong>${o.close_up_pct ?? "—"}%</strong></p>
+        ${extraLater.map((x) => `<p>${x}</p>`).join("")}
       </div>
       <div class="path-card">
         <h3>By weekday</h3>
@@ -115,22 +197,26 @@
     `;
 
     const rows = (s.matches || []).map((m) => {
+      const setupVal = m.lead_ret != null ? m.lead_ret : m.setup_ret;
+      const setup = setupVal == null ? "—" : `${setupVal >= 0 ? "+" : ""}${setupVal}%`;
       const next = m.next_ret == null ? "—" : `${m.next_ret >= 0 ? "+" : ""}${m.next_ret}%`;
       const day = m.day_ret == null ? "—" : `${m.day_ret >= 0 ? "+" : ""}${m.day_ret}%`;
       const nextCls = (m.next_ret ?? 0) >= 0 ? "up" : "down";
+      const setupCls = (setupVal ?? 0) >= 0 ? "up" : "down";
       return `<tr>
         <td>${fmtDate(m.date)}</td>
         <td>${m.label}</td>
-        <td class="down">${m.setup_ret}%</td>
+        <td class="${setupCls}">${setup}</td>
         <td class="${nextCls}">${next}</td>
         <td>${day}</td>
       </tr>`;
     }).join("");
 
+    const setupCol = mode === "cross" ? "Lead" : "Setup";
     $("scenarioMatches").innerHTML = `
       <div class="table-wrap">
         <table class="moves-table">
-          <thead><tr><th>Date</th><th>Day</th><th>Setup</th><th>Next ${s.next_minutes}m</th><th>Day</th></tr></thead>
+          <thead><tr><th>Date</th><th>Day</th><th>${setupCol}</th><th>Next ${s.next_minutes}m</th><th>Day</th></tr></thead>
           <tbody>${rows || "<tr><td colspan='5'>No matching days</td></tr>"}</tbody>
         </table>
       </div>
@@ -140,6 +226,7 @@
     const times = s.median_path?.times || [];
     const values = s.median_path?.values || [];
     if (scenarioPathChart) scenarioPathChart.destroy();
+    const downish = ["down", "waterfall"].includes(s.direction) || s.direction === "waterfall";
     scenarioPathChart = new Chart($("scenarioPathChart").getContext("2d"), {
       type: "line",
       data: {
@@ -147,8 +234,8 @@
         datasets: [{
           label: `Median path after ${s.to_time} (100 = setup end)`,
           data: values,
-          borderColor: s.direction === "down" ? "#e06c75" : "#3dbb8b",
-          backgroundColor: s.direction === "down" ? "rgba(224,108,117,0.12)" : "rgba(61,187,139,0.12)",
+          borderColor: downish ? "#e06c75" : "#3dbb8b",
+          backgroundColor: downish ? "rgba(224,108,117,0.12)" : "rgba(61,187,139,0.12)",
           fill: true,
           pointRadius: 0,
           borderWidth: 2,
@@ -731,8 +818,13 @@
   $("comparePreset").addEventListener("change", load);
   $("compareLimit").addEventListener("change", load);
   $("runScenario").addEventListener("click", loadScenario);
-  ["scenarioWindow", "scenarioDirection", "scenarioThreshold", "scenarioMeasure", "scenarioNext", "scenarioWeekday"].forEach((id) => {
-    $(id).addEventListener("change", loadScenario);
+  $("scenarioMode").addEventListener("change", () => {
+    syncScenarioControls();
+    loadScenario();
   });
+  ["scenarioWindow", "scenarioDirection", "scenarioThreshold", "scenarioMeasure", "scenarioNext", "scenarioWeekday", "scenarioShape", "scenarioSetupEnd", "scenarioPair"].forEach((id) => {
+    $(id)?.addEventListener("change", loadScenario);
+  });
+  syncScenarioControls();
   load();
 })();
