@@ -21,7 +21,7 @@ Goal: learn **Mon–Fri** time-of-day patterns for **SOXL** and **QQQ**, includi
 ## Build phases
 
 1. Config + Yahoo 1m client + RTH filter  
-2. Historical ingest (~7 trading days of 1m; Yahoo caps 1m history)  
+2. Historical ingest (request up to ~30 calendar days of 1m; Yahoo usually has ~2–3 weeks)  
 3. MySQL/SQLite schema (`prices_1m`)  
 4. Cron sync every 5 minutes  
 5. PHP API (aggregates, probabilities, low/high profiles)  

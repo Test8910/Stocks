@@ -19,7 +19,7 @@ php -S 127.0.0.1:8080
 
 ## What it does
 
-1. Pulls Yahoo Finance **1-minute** bars (~14 calendar days, chunked; Yahoo caps ~7–8 days per request)
+1. Pulls Yahoo Finance **1-minute** bars (up to ~30 calendar days, chunked in 7-day requests; Yahoo only keeps ~2–3 weeks of 1m history)
 2. Keeps only weekdays **09:30–16:00 ET**
 3. Stores `symbol, timestamp, price, volume` in SQLite (or MySQL)
 4. Cron sync every 5 minutes (`cron/stocks-intraday`)

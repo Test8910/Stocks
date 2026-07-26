@@ -23,14 +23,14 @@ return [
     'session_start' => '09:30',
     'session_end' => '16:00',
 
-    // Yahoo 1m history is capped (~7–8 days per request); we chunk to ~14 calendar days
-    'history_calendar_days' => 14,
+    // Request up to ~30 calendar days of 1m data (Yahoo max). Chunked in 7-day requests.
+    // Actual available history is often ~2–3 weeks of 1-minute bars.
+    'history_calendar_days' => 30,
     'request_delay_ms' => 350,
 
     'pattern' => [
         'probability_threshold' => 0.60,
-        // Yahoo only keeps ~7–8 days of 1m history (~2 of each weekday at first).
-        // Raise toward 5 as cron accumulates more sessions.
+        // Raise toward 5 as history accumulates more sessions per weekday.
         'min_samples' => 2,
         'min_window_minutes' => 3,
     ],

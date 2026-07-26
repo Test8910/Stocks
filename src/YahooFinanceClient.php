@@ -10,7 +10,10 @@ use RuntimeException;
 
 /**
  * Yahoo Finance chart API client for 1-minute bars.
- * Yahoo allows ~7–8 days of 1m data per request; we chunk longer windows.
+ *
+ * Limits (Yahoo):
+ * - 1m data only exists inside roughly the last ~30 days
+ * - each request may cover at most ~7–8 days, so we chunk
  */
 final class YahooFinanceClient
 {
@@ -25,12 +28,14 @@ final class YahooFinanceClient
     /**
      * @return list<array{ts:int, price:float, volume:?int}>
      */
-    public function fetchOneMinute(string $yahooSymbol, int $calendarDays = 14): array
+    public function fetchOneMinute(string $yahooSymbol, int $calendarDays = 30): array
     {
         $end = new DateTimeImmutable('now', new DateTimeZone('UTC'));
-        $start = $end->modify(sprintf('-%d days', max(1, $calendarDays)));
+        // Yahoo rejects 1m windows older than ~30 days
+        $calendarDays = max(1, min(30, $calendarDays));
+        $start = $end->modify(sprintf('-%d days', $calendarDays));
 
-        // Chunk by 7 days to stay under Yahoo's 1m limit
+        // Chunk by 7 days to stay under Yahoo's per-request 1m limit
         $chunkDays = 7;
         $cursor = $start;
         $all = [];
@@ -41,12 +46,14 @@ final class YahooFinanceClient
                 $chunkEnd = $end;
             }
 
-            $rows = $this->fetchRange(
-                $yahooSymbol,
-                (int) $cursor->format('U'),
-                (int) $chunkEnd->format('U')
-            );
+            $p1 = (int) $cursor->format('U');
+            $p2 = (int) $chunkEnd->format('U');
+            $rows = $this->fetchRange($yahooSymbol, $p1, $p2);
             foreach ($rows as $row) {
+                // Keep only bars inside the requested chunk window
+                if ($row['ts'] < $p1 || $row['ts'] > $p2) {
+                    continue;
+                }
                 $all[$row['ts']] = $row;
             }
 
