@@ -282,6 +282,74 @@ final class StatsService
     }
 
     /**
+     * Resample 1-minute session paths into N-minute bars (close of each bucket).
+     *
+     * @param list<array<string,mixed>> $paths
+     * @return list<array<string,mixed>>
+     */
+    public function aggregatePaths(array $paths, int $intervalMinutes): array
+    {
+        if ($intervalMinutes <= 1) {
+            return $paths;
+        }
+
+        $out = [];
+        foreach ($paths as $path) {
+            $buckets = [];
+            foreach ($path['points'] as $pt) {
+                $m = (int) $pt['minute_of_day'];
+                $bucket = intdiv($m, $intervalMinutes) * $intervalMinutes;
+                $buckets[$bucket] = $pt; // keep last price in bucket
+            }
+            ksort($buckets);
+
+            $points = [];
+            $lowMinute = null;
+            $highMinute = null;
+            $lowPrice = PHP_FLOAT_MAX;
+            $highPrice = -PHP_FLOAT_MAX;
+
+            foreach ($buckets as $bucketMinute => $pt) {
+                $price = (float) $pt['price'];
+                $points[] = [
+                    'time' => $this->session->minuteLabel((int) $bucketMinute),
+                    'minute_of_day' => (int) $bucketMinute,
+                    'price' => $price,
+                ];
+                if ($price < $lowPrice) {
+                    $lowPrice = $price;
+                    $lowMinute = (int) $bucketMinute;
+                }
+                if ($price > $highPrice) {
+                    $highPrice = $price;
+                    $highMinute = (int) $bucketMinute;
+                }
+            }
+
+            $highAfterLow = $lowMinute !== null && $highMinute !== null && $highMinute > $lowMinute;
+            $minutesLh = ($lowMinute !== null && $highMinute !== null)
+                ? abs($highMinute - $lowMinute)
+                : null;
+            $movePct = ($lowPrice > 0)
+                ? (($highPrice - $lowPrice) / $lowPrice) * 100
+                : null;
+
+            $path['points'] = $points;
+            $path['interval_minutes'] = $intervalMinutes;
+            $path['low_price'] = round($lowPrice, 4);
+            $path['high_price'] = round($highPrice, 4);
+            $path['low_time'] = $lowMinute !== null ? $this->session->minuteLabel($lowMinute) : null;
+            $path['high_time'] = $highMinute !== null ? $this->session->minuteLabel($highMinute) : null;
+            $path['high_after_low'] = $highAfterLow;
+            $path['minutes_low_to_high'] = $highAfterLow ? $minutesLh : null;
+            $path['move_pct'] = $movePct !== null ? round($movePct, 3) : null;
+            $out[] = $path;
+        }
+
+        return $out;
+    }
+
+    /**
      * Average price by minute for a weekday (aligned to open = 100).
      *
      * @return array{

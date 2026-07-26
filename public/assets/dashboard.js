@@ -7,9 +7,10 @@
   async function load() {
     const symbol = $("symbol").value;
     const minDollars = $("minDollars").value;
-    $("meta").textContent = `Loading ${symbol} (≥$${minDollars})…`;
+    const interval = $("interval").value;
+    $("meta").textContent = `Loading ${symbol} (${interval}m, ≥$${minDollars})…`;
     const res = await fetch(
-      `api.php?action=summary&symbol=${encodeURIComponent(symbol)}&min_dollars=${encodeURIComponent(minDollars)}`
+      `api.php?action=summary&symbol=${encodeURIComponent(symbol)}&min_dollars=${encodeURIComponent(minDollars)}&interval=${encodeURIComponent(interval)}`
     );
     const data = await res.json();
     if (!data.ok) {
@@ -20,9 +21,10 @@
     const bm = data.big_moves?.thresholds;
     const moveCount = data.big_moves?.moves?.length ?? 0;
     const min$ = bm?.min ?? Number(minDollars);
+    const iv = data.interval_minutes ?? Number(interval);
     $("bigMoveTitle").textContent = `$${min$} and up moves — when they happen`;
-    $("bigMoveHint").innerHTML = `Swings of <strong>$${min$} or more</strong> (up or down). Change “Move size” above to switch between $5 / $7 / $9 / $11.`;
-    $("meta").textContent = `${data.symbol}: ${data.bar_count} bars · ${moveCount} moves ≥$${min$} · ${(data.patterns.threshold * 100).toFixed(0)}% pattern threshold`;
+    $("bigMoveHint").innerHTML = `Swings of <strong>$${min$} or more</strong> on <strong>${iv}-minute</strong> bars (up or down). Use <em>Move size</em> and <em>Interval</em> above.`;
+    $("meta").textContent = `${data.symbol}: ${iv}-min interval · ${moveCount} moves ≥$${min$} · ${data.session_count} sessions`;
     fillSessionDates();
     renderBigMoves();
     renderSessionPrice();
@@ -491,6 +493,7 @@
   $("reload").addEventListener("click", load);
   $("symbol").addEventListener("change", load);
   $("minDollars").addEventListener("change", load);
+  $("interval").addEventListener("change", load);
   $("sessionDate").addEventListener("change", () => summary && renderSessionPrice());
   $("weekday").addEventListener("change", () => summary && renderAvgPrice());
   load();

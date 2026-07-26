@@ -35,6 +35,15 @@
         </select>
       </label>
       <label>
+        Interval
+        <select id="interval">
+          <option value="1" selected>1 min</option>
+          <option value="2">2 min</option>
+          <option value="5">5 min</option>
+          <option value="15">15 min</option>
+        </select>
+      </label>
+      <label>
         Session day
         <select id="sessionDate"></select>
       </label>

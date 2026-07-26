@@ -116,11 +116,71 @@ try {
         case 'summary': {
             $analysis = $stats->analyze($symbol);
             $detected = $patterns->detect($analysis);
-            $paths = $stats->sessionPaths($symbol);
+
+            $intervalAllowed = [1, 2, 5, 15];
+            $interval = isset($_GET['interval']) ? (int) $_GET['interval'] : 1;
+            if (!in_array($interval, $intervalAllowed, true)) {
+                $interval = 1;
+            }
+
+            $paths1m = $stats->sessionPaths($symbol);
+            $paths = $stats->aggregatePaths($paths1m, $interval);
+
             $weekdayAvgs = [];
             for ($wd = 1; $wd <= 5; $wd++) {
                 $weekdayAvgs[$wd] = $stats->weekdayAvgPrice($symbol, $wd);
             }
+            // Rebuild weekday avg from aggregated paths when interval > 1
+            if ($interval > 1) {
+                for ($wd = 1; $wd <= 5; $wd++) {
+                    $dayPaths = array_values(array_filter(
+                        $paths,
+                        static fn ($p) => (int) $p['weekday'] === $wd
+                    ));
+                    $labels = [1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri'];
+                    $bucketMap = [];
+                    foreach ($dayPaths as $path) {
+                        foreach ($path['points'] as $pt) {
+                            $m = (int) $pt['minute_of_day'];
+                            $bucketMap[$m]['sum'] = ($bucketMap[$m]['sum'] ?? 0) + (float) $pt['price'];
+                            $bucketMap[$m]['n'] = ($bucketMap[$m]['n'] ?? 0) + 1;
+                        }
+                    }
+                    ksort($bucketMap);
+                    $times = [];
+                    $avgPrice = [];
+                    $bestLow = null;
+                    $bestHigh = null;
+                    $lowM = null;
+                    $highM = null;
+                    foreach ($bucketMap as $m => $agg) {
+                        $p = $agg['sum'] / $agg['n'];
+                        $times[] = $session->minuteLabel((int) $m);
+                        $avgPrice[] = round($p, 4);
+                        if ($bestLow === null || $p < $bestLow) {
+                            $bestLow = $p;
+                            $lowM = (int) $m;
+                        }
+                        if ($bestHigh === null || $p > $bestHigh) {
+                            $bestHigh = $p;
+                            $highM = (int) $m;
+                        }
+                    }
+                    $weekdayAvgs[$wd] = [
+                        'weekday' => $wd,
+                        'label' => $labels[$wd],
+                        'times' => $times,
+                        'avg_price' => $avgPrice,
+                        'avg_norm' => [],
+                        'low_time' => $lowM !== null ? $session->minuteLabel($lowM) : null,
+                        'high_time' => $highM !== null ? $session->minuteLabel($highM) : null,
+                        'low_price' => $bestLow !== null ? round($bestLow, 4) : null,
+                        'high_price' => $bestHigh !== null ? round($bestHigh, 4) : null,
+                        'sessions' => count($dayPaths),
+                    ];
+                }
+            }
+
             $bmCfg = $config['big_moves'] ?? [];
             $allowed = [5.0, 7.0, 9.0, 11.0];
             $requested = isset($_GET['min_dollars']) ? (float) $_GET['min_dollars'] : null;
@@ -141,6 +201,7 @@ try {
             echo json_encode([
                 'ok' => true,
                 'symbol' => $symbol,
+                'interval_minutes' => $interval,
                 'bar_count' => $analysis['bar_count'],
                 'session_count' => $analysis['session_count'],
                 'low_high' => array_values($analysis['low_high']),
