@@ -15,7 +15,7 @@
     <div>
       <p class="brand">Stocks</p>
       <h1>Price, low, then high — SOXL &amp; QQQ</h1>
-      <p class="sub">See price with time, $2–$3 and &gt;$3 up/down move timings, and low → high paths (Mon–Fri, 09:30–16:00 ET)</p>
+      <p class="sub">See price with time, <strong>$5 and up</strong> move timings (up or down), and low → high paths (Mon–Fri, 09:30–16:00 ET)</p>
     </div>
     <div class="controls">
       <label>
@@ -46,8 +46,8 @@
   <p id="meta" class="meta">Loading…</p>
 
   <section class="section">
-    <h2>$2–$3 and &gt;$3 moves — when they happen</h2>
-    <p class="hint">Swings of at least <strong>$2</strong> (up or down). Moves <strong>over $3</strong> are highlighted — those are the timings to watch.</p>
+    <h2>$5 and up moves — when they happen</h2>
+    <p class="hint">Swings of <strong>$5 or more</strong> (up or down). These are the timings to watch.</p>
     <div id="bigMoveTiming" class="lowhigh"></div>
     <div id="bigMoveList" class="big-move-list"></div>
   </section>

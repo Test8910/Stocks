@@ -16,8 +16,8 @@
     summary = data;
     const bm = data.big_moves?.thresholds;
     const moveCount = data.big_moves?.moves?.length ?? 0;
-    const over3 = (data.big_moves?.moves || []).filter((m) => m.bucket === "over_3").length;
-    $("meta").textContent = `${data.symbol}: ${data.bar_count} bars · ${moveCount} moves ≥$${bm?.min ?? 2} (${over3} over $${bm?.big ?? 3}) · ${(data.patterns.threshold * 100).toFixed(0)}% pattern threshold`;
+    const min$ = bm?.min ?? 5;
+    $("meta").textContent = `${data.symbol}: ${data.bar_count} bars · ${moveCount} moves ≥$${min$} · ${(data.patterns.threshold * 100).toFixed(0)}% pattern threshold`;
     fillSessionDates();
     renderBigMoves();
     renderSessionPrice();
@@ -46,20 +46,21 @@
         <p><strong>${d.count}</strong> moves ≥$${bm.thresholds.min}</p>
         <p class="up">Up: ${d.up_count} · typical start <strong>${d.typical_up_start ?? "—"}</strong></p>
         <p class="down">Down: ${d.down_count} · typical start <strong>${d.typical_down_start ?? "—"}</strong></p>
-        <p class="high">&gt;$${bm.thresholds.big}: ${d.over_3_count} · typical start <strong>${d.typical_over_3_start ?? "—"}</strong></p>
+        <p class="high">≥$${bm.thresholds.big}: ${d.big_count ?? d.count} · typical start <strong>${d.typical_big_start ?? d.typical_up_start ?? "—"}</strong></p>
       `;
       timing.appendChild(el);
     });
 
     const moves = bm.moves || [];
+    const minLabel = `≥$${bm.thresholds.min}`;
     if (!moves.length) {
-      list.innerHTML = `<p class="hint">No ≥$${bm.thresholds.min} swings found in the loaded history.</p>`;
+      list.innerHTML = `<p class="hint">No ${minLabel} swings found in the loaded history.</p>`;
       return;
     }
 
     const rows = moves.map((m) => {
       const cls = m.direction === "up" ? "up" : "down";
-      const badge = m.bucket === "over_3" ? `<span class="badge over3">&gt;$3</span>` : `<span class="badge mid">$2–$3</span>`;
+      const badge = `<span class="badge over3">${minLabel}</span>`;
       const sign = m.direction === "up" ? "+" : "−";
       return `<tr class="${cls}">
         <td><button type="button" class="linkish" data-date="${m.date}">${m.date}</button></td>
@@ -121,15 +122,15 @@
       return;
     }
 
+    const min$ = summary.big_moves?.thresholds?.min ?? 5;
     const dayMoves = (summary.big_moves?.moves || []).filter((m) => m.date === s.date);
     const moveLines = dayMoves.length
       ? `<ul class="session-moves">${dayMoves.map((m) => {
           const cls = m.direction === "up" ? "up" : "down";
-          const tag = m.bucket === "over_3" ? "&gt;$3" : "$2–$3";
           const sign = m.direction === "up" ? "+" : "−";
-          return `<li class="${cls}"><strong>${tag}</strong> ${m.direction} ${sign}$${m.dollars.toFixed(2)} · <strong>${m.start_time}→${m.end_time}</strong> ($${m.start_price.toFixed(2)}→$${m.end_price.toFixed(2)})</li>`;
+          return `<li class="${cls}"><strong>≥$${min$}</strong> ${m.direction} ${sign}$${m.dollars.toFixed(2)} · <strong>${m.start_time}→${m.end_time}</strong> ($${m.start_price.toFixed(2)}→$${m.end_price.toFixed(2)})</li>`;
         }).join("")}</ul>`
-      : `<p class="hint">No ≥$2 swings on this session.</p>`;
+      : `<p class="hint">No ≥$${min$} swings on this session.</p>`;
 
     const lowToHigh = s.high_after_low
       ? `<span class="up">Low → High in ${s.minutes_low_to_high} min (+${s.move_pct}%)</span>`
@@ -141,7 +142,7 @@
         <p class="low">Lower price: <strong>$${s.low_price}</strong> at <strong>${s.low_time}</strong></p>
         <p class="high">Higher price: <strong>$${s.high_price}</strong> at <strong>${s.high_time}</strong></p>
         <p>${lowToHigh}</p>
-        <p><strong>$2 / &gt;$3 moves this day</strong></p>
+        <p><strong>≥$${min$} moves this day</strong></p>
         ${moveLines}
       </div>
     `;
@@ -161,16 +162,15 @@
     // Overlay each big move stretch on the chart
     const moveDatasets = dayMoves.map((m) => {
       const isUp = m.direction === "up";
-      const isBig = m.bucket === "over_3";
       const data = s.points.map((p) => {
         const t = p.minute_of_day;
         return t >= m.start_minute && t <= m.end_minute ? p.price : null;
       });
       return {
-        label: `${isBig ? ">$3" : "$2–$3"} ${m.direction} ${m.start_time}`,
+        label: `≥$${min$} ${m.direction} ${m.start_time}`,
         data,
-        borderColor: isUp ? (isBig ? "#2ee6a0" : "#3dbb8b") : (isBig ? "#ff6b76" : "#e06c75"),
-        borderWidth: isBig ? 3 : 2,
+        borderColor: isUp ? "#2ee6a0" : "#ff6b76",
+        borderWidth: 3,
         pointRadius: 0,
         tension: 0.05,
         spanGaps: false,

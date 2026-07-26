@@ -124,9 +124,9 @@ try {
             $bmCfg = $config['big_moves'] ?? [];
             $bigMoves = (new BigMoveDetector(
                 $session,
-                (float) ($bmCfg['min_dollars'] ?? 2.0),
-                (float) ($bmCfg['big_dollars'] ?? 3.0),
-                (float) ($bmCfg['reversal_dollars'] ?? 1.0),
+                (float) ($bmCfg['min_dollars'] ?? 5.0),
+                (float) ($bmCfg['big_dollars'] ?? 5.0),
+                (float) ($bmCfg['reversal_dollars'] ?? 1.5),
                 (int) ($bmCfg['max_window_minutes'] ?? 90)
             ))->analyze($paths);
 

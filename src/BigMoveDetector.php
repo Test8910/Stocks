@@ -5,15 +5,15 @@ declare(strict_types=1);
 namespace Stocks;
 
 /**
- * Find stretches where price moves at least $2 (and flag moves over $3), up or down.
+ * Find stretches where price moves at least $minDollars (default $5), up or down.
  */
 final class BigMoveDetector
 {
     public function __construct(
         private readonly SessionFilter $session,
-        private readonly float $minDollars = 2.0,
-        private readonly float $bigDollars = 3.0,
-        private readonly float $reversalDollars = 1.0,
+        private readonly float $minDollars = 5.0,
+        private readonly float $bigDollars = 5.0,
+        private readonly float $reversalDollars = 1.5,
         private readonly int $maxWindowMinutes = 90
     ) {
     }
@@ -51,7 +51,7 @@ final class BigMoveDetector
             $dayMoves = array_values(array_filter($moves, static fn ($m) => (int) $m['weekday'] === $wd));
             $ups = array_values(array_filter($dayMoves, static fn ($m) => $m['direction'] === 'up'));
             $downs = array_values(array_filter($dayMoves, static fn ($m) => $m['direction'] === 'down'));
-            $over3 = array_values(array_filter($dayMoves, static fn ($m) => $m['bucket'] === 'over_3'));
+            $big = array_values(array_filter($dayMoves, static fn ($m) => $m['bucket'] === 'big'));
 
             $byWeekday[$wd] = [
                 'weekday' => $wd,
@@ -59,10 +59,10 @@ final class BigMoveDetector
                 'count' => count($dayMoves),
                 'up_count' => count($ups),
                 'down_count' => count($downs),
-                'over_3_count' => count($over3),
+                'big_count' => count($big),
                 'typical_up_start' => $this->typicalTime($ups, 'start_minute'),
                 'typical_down_start' => $this->typicalTime($downs, 'start_minute'),
-                'typical_over_3_start' => $this->typicalTime($over3, 'start_minute'),
+                'typical_big_start' => $this->typicalTime($big, 'start_minute'),
                 'moves' => $dayMoves,
             ];
         }
@@ -182,7 +182,7 @@ final class BigMoveDetector
             $start = $points[$from];
             $end = $points[$to];
             $dollars = round((float) $dollars, 4);
-            $bucket = $dollars >= $this->bigDollars ? 'over_3' : '2_to_3';
+            $bucket = $dollars >= $this->bigDollars ? 'big' : 'min';
 
             $moves[] = [
                 'date' => $session['date'],
