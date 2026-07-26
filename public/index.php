@@ -94,7 +94,8 @@
   </section>
 
   <section class="section">
-    <h2>Pattern windows (≥ 60% probability)</h2>
+    <h2 id="patternTitle">Pattern windows</h2>
+    <p id="patternHint" class="hint">Analyzed with your selected Interval and Move size.</p>
     <div id="patterns" class="patterns"></div>
   </section>
 

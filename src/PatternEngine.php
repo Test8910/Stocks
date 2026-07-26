@@ -13,7 +13,8 @@ final class PatternEngine
         private readonly float $probabilityThreshold = 0.60,
         private readonly int $minSamples = 5,
         private readonly SessionFilter $session = new SessionFilter(),
-        private readonly int $minWindowMinutes = 3
+        private readonly int $minWindowMinutes = 3,
+        private readonly int $barIntervalMinutes = 1
     ) {
     }
 
@@ -38,6 +39,7 @@ final class PatternEngine
         $out = [
             'threshold' => $this->probabilityThreshold,
             'min_samples' => $this->minSamples,
+            'interval_minutes' => $this->barIntervalMinutes,
             'weekdays' => [],
         ];
 
@@ -77,10 +79,52 @@ final class PatternEngine
                 'typical_low_time' => $lh['typical_low_time'] ?? null,
                 'typical_high_time' => $lh['typical_high_time'] ?? null,
                 'sessions' => $lh['sessions'] ?? 0,
+                'dollar_up_windows' => [],
+                'dollar_down_windows' => [],
             ];
         }
 
         return $out;
+    }
+
+    /**
+     * Attach selected dollar-move windows (from BigMoveDetector) into pattern weekdays.
+     *
+     * @param array<string,mixed> $patterns
+     * @param array<string,mixed> $bigMoves
+     * @return array<string,mixed>
+     */
+    public function withDollarMoves(array $patterns, array $bigMoves, float $minDollars): array
+    {
+        $patterns['min_dollars'] = $minDollars;
+        $byWd = $bigMoves['by_weekday'] ?? [];
+
+        foreach ($patterns['weekdays'] as $wd => &$day) {
+            $moves = $byWd[$wd]['moves'] ?? [];
+            $up = [];
+            $down = [];
+            foreach ($moves as $m) {
+                $row = [
+                    'start' => $m['start_time'],
+                    'end' => $m['end_time'],
+                    'dollars' => $m['dollars'],
+                    'date' => $m['date'],
+                ];
+                if ($m['direction'] === 'up') {
+                    $up[] = $row;
+                } else {
+                    $down[] = $row;
+                }
+            }
+            $day['dollar_up_windows'] = $up;
+            $day['dollar_down_windows'] = $down;
+            $day['typical_dollar_up_start'] = $byWd[$wd]['typical_up_start'] ?? null;
+            $day['typical_dollar_down_start'] = $byWd[$wd]['typical_down_start'] ?? null;
+            $day['dollar_move_count'] = $byWd[$wd]['count'] ?? 0;
+        }
+        unset($day);
+
+        return $patterns;
     }
 
     /**
@@ -117,13 +161,14 @@ final class PatternEngine
             $windows[] = $this->windowPayload($start, (int) $last, $sum / max(1, $count), $kind);
         }
 
-        // Drop tiny noisy blips (common when history is only ~2 sessions/weekday)
+        // Drop tiny noisy blips; at larger bar intervals, one bar can qualify
+        $minSpan = max(1, min($this->minWindowMinutes, $this->barIntervalMinutes));
         return array_values(array_filter(
             $windows,
-            function (array $w): bool {
+            function (array $w) use ($minSpan): bool {
                 $start = $this->labelToMinute($w['start']);
                 $end = $this->labelToMinute($w['end']);
-                return ($end - $start + 1) >= $this->minWindowMinutes;
+                return ($end - $start + 1) >= $minSpan;
             }
         ));
     }

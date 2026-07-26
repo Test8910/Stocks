@@ -24,6 +24,8 @@
     const iv = data.interval_minutes ?? Number(interval);
     $("bigMoveTitle").textContent = `$${min$} and up moves — when they happen`;
     $("bigMoveHint").innerHTML = `Swings of <strong>$${min$} or more</strong> on <strong>${iv}-minute</strong> bars (up or down). Use <em>Move size</em> and <em>Interval</em> above.`;
+    $("patternTitle").textContent = `Pattern windows (${iv}-min · ≥$${min$} · ≥${Math.round((data.patterns?.threshold ?? 0.6) * 100)}% )`;
+    $("patternHint").innerHTML = `Recalculated from your selected options: <strong>${iv}-minute</strong> interval and <strong>$${min$}+</strong> moves, plus ≥60% up/down probability windows.`;
     $("meta").textContent = `${data.symbol}: ${iv}-min interval · ${moveCount} moves ≥$${min$} · ${data.session_count} sessions`;
     fillSessionDates();
     renderBigMoves();
@@ -397,7 +399,16 @@
   function renderPatterns() {
     const root = $("patterns");
     root.innerHTML = "";
+    const min$ = summary.min_dollars ?? summary.big_moves?.thresholds?.min ?? 5;
+    const iv = summary.interval_minutes ?? 1;
     const days = summary.patterns?.weekdays || {};
+
+    const opts = document.createElement("div");
+    opts.className = "path-card";
+    opts.innerHTML = `<h3>Active options</h3>
+      <p>Interval: <strong>${iv} min</strong> · Move size: <strong>≥$${min$}</strong> · Prob threshold: <strong>${Math.round((summary.patterns?.threshold ?? 0.6) * 100)}%</strong></p>`;
+    root.appendChild(opts);
+
     Object.keys(days).forEach((wd) => {
       const d = days[wd];
       const ups = (d.uptrend_windows || [])
@@ -405,6 +416,14 @@
         .join("") || "<li>None</li>";
       const downs = (d.downtrend_windows || [])
         .map((w) => `<li class="down">${w.start}–${w.end} (down ${(w.avg_down_prob * 100).toFixed(0)}%)</li>`)
+        .join("") || "<li>None</li>";
+      const dUp = (d.dollar_up_windows || [])
+        .slice(0, 8)
+        .map((w) => `<li class="up">${w.date}: ${w.start}→${w.end} (+$${Number(w.dollars).toFixed(2)})</li>`)
+        .join("") || "<li>None</li>";
+      const dDown = (d.dollar_down_windows || [])
+        .slice(0, 8)
+        .map((w) => `<li class="down">${w.date}: ${w.start}→${w.end} (−$${Number(w.dollars).toFixed(2)})</li>`)
         .join("") || "<li>None</li>";
       const buy = d.buy_zone
         ? `<p class="up">Near lows: ${d.buy_zone.start}–${d.buy_zone.end}</p>`
@@ -417,9 +436,14 @@
       el.innerHTML = `
         <h3>${d.label}</h3>
         ${buy}${sell}
-        <p>Uptrend times</p>
+        <p>Typical ≥$${min$} start — up: <strong>${d.typical_dollar_up_start ?? "—"}</strong> · down: <strong>${d.typical_dollar_down_start ?? "—"}</strong> (${d.dollar_move_count ?? 0} moves)</p>
+        <p>≥$${min$} up moves</p>
+        <ul>${dUp}</ul>
+        <p>≥$${min$} down moves</p>
+        <ul>${dDown}</ul>
+        <p>${iv}-min uptrend windows (≥60%)</p>
         <ul>${ups}</ul>
-        <p>Downtrend times</p>
+        <p>${iv}-min downtrend windows (≥60%)</p>
         <ul>${downs}</ul>
       `;
       root.appendChild(el);
@@ -442,7 +466,8 @@
     const times = summary.times || [];
     const rows = heat.length;
     const cols = times.length;
-    const cellW = 2;
+    const iv = summary.interval_minutes || 1;
+    const cellW = Math.max(2, Math.min(12, iv));
     const cellH = 28;
     const labelW = 40;
     const canvas = $("heatCanvas");
@@ -465,7 +490,8 @@
     }
     ctx.fillStyle = "#9aabbc";
     ctx.font = "10px sans-serif";
-    for (let c = 0; c < cols; c += 30) {
+    const tickEvery = Math.max(1, Math.round(30 / iv));
+    for (let c = 0; c < cols; c += tickEvery) {
       ctx.fillText(times[c] || "", labelW + c * cellW, rows * cellH + 14);
     }
 

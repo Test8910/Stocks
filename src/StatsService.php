@@ -194,6 +194,151 @@ final class StatsService
             'weekdays' => $weekdays,
             'heatmap' => $heatmap,
             'low_high' => $lowHigh,
+            'interval_minutes' => 1,
+        ];
+    }
+
+    /**
+     * Build pattern/heatmap stats from (possibly aggregated) session paths.
+     *
+     * @param list<array<string,mixed>> $paths
+     */
+    public function analyzeFromPaths(array $paths, string $symbol, int $intervalMinutes = 1): array
+    {
+        $labels = [1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri'];
+        $sessionLen = $this->session->sessionLengthMinutes();
+        $bucket = [];
+        $dayExtremes = [];
+        $barCount = 0;
+
+        foreach ($paths as $path) {
+            $points = $path['points'] ?? [];
+            if ($points === []) {
+                continue;
+            }
+            $weekday = (int) $path['weekday'];
+            $barCount += count($points);
+
+            $lowMinute = null;
+            $highMinute = null;
+            $dayLow = PHP_FLOAT_MAX;
+            $dayHigh = -PHP_FLOAT_MAX;
+            foreach ($points as $pt) {
+                $p = (float) $pt['price'];
+                $m = (int) $pt['minute_of_day'];
+                if ($p < $dayLow) {
+                    $dayLow = $p;
+                    $lowMinute = $m;
+                }
+                if ($p > $dayHigh) {
+                    $dayHigh = $p;
+                    $highMinute = $m;
+                }
+            }
+            $range = $dayHigh - $dayLow;
+            $dayExtremes[$weekday][] = ['low' => $lowMinute, 'high' => $highMinute];
+
+            $prev = null;
+            foreach ($points as $pt) {
+                $m = (int) $pt['minute_of_day'];
+                $price = (float) $pt['price'];
+                $ret = null;
+                if ($prev !== null && $prev > 0) {
+                    $ret = ($price - $prev) / $prev;
+                }
+                $rel = $range > 0 ? ($price - $dayLow) / $range : 0.5;
+                if (!isset($bucket[$weekday][$m])) {
+                    $bucket[$weekday][$m] = ['rets' => [], 'rels' => []];
+                }
+                if ($ret !== null) {
+                    $bucket[$weekday][$m]['rets'][] = $ret;
+                }
+                $bucket[$weekday][$m]['rels'][] = $rel;
+                $prev = $price;
+            }
+        }
+
+        $step = max(1, $intervalMinutes);
+        $weekdays = [];
+        $heatmap = [];
+
+        for ($wd = 1; $wd <= 5; $wd++) {
+            $minutes = [];
+            $heatRow = [];
+            for ($m = 0; $m < $sessionLen; $m += $step) {
+                $rets = $bucket[$wd][$m]['rets'] ?? [];
+                $rels = $bucket[$wd][$m]['rels'] ?? [];
+                $n = count($rets);
+                $up = 0;
+                $down = 0;
+                $sum = 0.0;
+                foreach ($rets as $r) {
+                    $sum += $r;
+                    if ($r > 0) {
+                        $up++;
+                    } elseif ($r < 0) {
+                        $down++;
+                    }
+                }
+                $avgRet = $n > 0 ? $sum / $n : 0.0;
+                $upProb = $n > 0 ? $up / $n : 0.0;
+                $downProb = $n > 0 ? $down / $n : 0.0;
+                $avgRel = $rels !== [] ? array_sum($rels) / count($rels) : 0.5;
+                $cell = [
+                    'minute_of_day' => $m,
+                    'time' => $this->session->minuteLabel($m),
+                    'n' => $n,
+                    'avg_ret' => round($avgRet, 6),
+                    'up_prob' => round($upProb, 4),
+                    'down_prob' => round($downProb, 4),
+                    'avg_rel_low' => round(1 - $avgRel, 4),
+                    'avg_rel_high' => round($avgRel, 4),
+                ];
+                $minutes[] = $cell;
+                $heatRow[] = $n > 0 ? [
+                    'n' => $n,
+                    'avg_ret' => round($avgRet, 6),
+                    'up_prob' => round($upProb, 4),
+                    'avg_rel_high' => round($avgRel, 4),
+                ] : null;
+            }
+            $weekdays[$wd] = [
+                'weekday' => $wd,
+                'label' => $labels[$wd],
+                'minutes' => $minutes,
+            ];
+            $heatmap[] = $heatRow;
+        }
+
+        $lowHigh = [];
+        for ($wd = 1; $wd <= 5; $wd++) {
+            $ext = $dayExtremes[$wd] ?? [];
+            $avgLow = null;
+            $avgHigh = null;
+            if ($ext !== []) {
+                $avgLow = array_sum(array_column($ext, 'low')) / count($ext);
+                $avgHigh = array_sum(array_column($ext, 'high')) / count($ext);
+            }
+            $lowHigh[$wd] = [
+                'weekday' => $wd,
+                'label' => $labels[$wd],
+                'sessions' => count($ext),
+                'avg_low_minute' => $avgLow !== null ? round($avgLow, 1) : null,
+                'avg_high_minute' => $avgHigh !== null ? round($avgHigh, 1) : null,
+                'typical_low_time' => $avgLow !== null ? $this->session->minuteLabel((int) round($avgLow)) : null,
+                'typical_high_time' => $avgHigh !== null ? $this->session->minuteLabel((int) round($avgHigh)) : null,
+            ];
+        }
+
+        return [
+            'symbol' => $symbol,
+            'session_minutes' => $sessionLen,
+            'bar_count' => $barCount,
+            'session_count' => count($paths),
+            'weekdays' => $weekdays,
+            'heatmap' => $heatmap,
+            'low_high' => $lowHigh,
+            'interval_minutes' => $intervalMinutes,
         ];
     }
 
