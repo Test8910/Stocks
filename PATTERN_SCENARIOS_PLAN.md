@@ -209,8 +209,14 @@ Options (pick later):
 
 1. **If up 09:30→10:00** → P(pullback by 11:00), P(close up), P(high after 10:00)  
 2. **If down 09:30→10:00** → P(bounce by 11:00), P(close down), P(low after 10:00)  
-3. **If strong up (≥$5 or ≥1%) 09:30→10:00** → same outcomes  
-4. Split each by weekday when N allows  
+3. **If drops ≥X% in window T** → next 60m bounce vs continue, close green%  
+   - Windows: 09:30–10:00, 10:00–11:00, 11:00–12:00, 14:00–15:00  
+   - X presets: 0.5%, 1%, 1.5%, 2%, 3% (SOXL); tighter for QQQ  
+   - Optional: max drawdown inside window vs end-to-end drop  
+4. **If strong up (≥$5 or ≥1%) 09:30→10:00** → same outcomes  
+5. Split each by weekday when N allows  
+
+Checked on current data (see `ANALYSIS_RESULTS.md`): early SOXL drops often keep falling; 10:00–11:00 drops bounce more often.
 
 ---
 
