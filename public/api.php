@@ -13,6 +13,7 @@ use Stocks\GlobalLeadLag;
 use Stocks\LiveBiasService;
 use Stocks\PatternEngine;
 use Stocks\PriceRepository;
+use Stocks\RsiAnalyzer;
 use Stocks\ScenarioAnalyzer;
 use Stocks\SessionFilter;
 use Stocks\StatsService;
@@ -281,6 +282,25 @@ try {
             $result = (new LiveBiasService($yahoo, new GlobalLeadLag($stats)))
                 ->build($meta, $uk, $us, $threshold);
             echo json_encode($result);
+            break;
+        }
+
+        case 'rsi': {
+            $sym = strtoupper((string) ($_GET['symbol'] ?? 'SOXL'));
+            if (!in_array($sym, ['SOXL', 'QQQ'], true)) {
+                $sym = 'SOXL';
+            }
+            $interval = isset($_GET['rsi_interval']) ? (int) $_GET['rsi_interval'] : 5;
+            if (!in_array($interval, [1, 5, 15], true)) {
+                $interval = 5;
+            }
+            $forward = isset($_GET['forward_bars']) ? (int) $_GET['forward_bars'] : 6;
+            if (!in_array($forward, [3, 6, 12], true)) {
+                $forward = 6;
+            }
+            $bars = $repo->barsForSymbol($sym);
+            $result = (new RsiAnalyzer())->analyze($bars, $sym, $interval, 14, 30.0, 70.0, $forward);
+            echo json_encode(['ok' => true, 'rsi' => $result]);
             break;
         }
 

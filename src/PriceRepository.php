@@ -124,11 +124,11 @@ final class PriceRepository
         return (int) $stmt->fetchColumn();
     }
 
-    /** @return list<array{weekday:int,minute_of_day:int,price:float,ts_et:string,session_date:string}> */
+    /** @return list<array{weekday:int,minute_of_day:int,price:float,volume:?int,ts_et:string,session_date:string}> */
     public function barsForSymbol(string $symbol): array
     {
         $stmt = $this->pdo->prepare(
-            "SELECT weekday, minute_of_day, price, ts_et,
+            "SELECT weekday, minute_of_day, price, volume, ts_et,
                     substr(ts_et, 1, 10) AS session_date
              FROM prices_1m
              WHERE symbol = :s

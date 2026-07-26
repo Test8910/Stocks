@@ -61,6 +61,83 @@
     try { loadScenario(); } catch (e) { console.error(e); }
     try { loadGlobalLead(); } catch (e) { console.error(e); }
     try { loadLiveBias(); } catch (e) { console.error(e); }
+    try { loadRsi(); } catch (e) { console.error(e); }
+  }
+
+  async function loadRsi() {
+    const symbol = $("rsiSymbol")?.value || "SOXL";
+    const interval = $("rsiInterval")?.value || "5";
+    const forward = $("rsiForward")?.value || "6";
+    if ($("rsiSummaryText")) $("rsiSummaryText").textContent = "Computing RSI…";
+    const url = `api.php?action=rsi&symbol=${encodeURIComponent(symbol)}&rsi_interval=${encodeURIComponent(interval)}&forward_bars=${encodeURIComponent(forward)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data.ok) {
+      if ($("rsiSummaryText")) $("rsiSummaryText").textContent = data.error || "RSI failed";
+      return;
+    }
+    renderRsi(data.rsi);
+  }
+
+  function renderRsi(r) {
+    if (!r || !$("rsiSummaryText")) return;
+    $("rsiSummaryText").textContent = r.summary_text || "";
+    const s = r.signals || {};
+    const os = s.rsi_oversold || {};
+    const ob = s.rsi_overbought || {};
+    const cu = s.rsi_cross_up_oversold || {};
+    const vol = r.volume || {};
+    const worksLabel = (w) => w === true ? "works" : (w === false ? "weak" : "—");
+    const worksCls = (w) => w === true ? "up" : (w === false ? "down" : "high");
+
+    $("rsiCards").innerHTML = `
+      <div class="path-card">
+        <h3>RSI ≤ 30 (oversold)</h3>
+        <p>N=<strong>${os.n ?? 0}</strong> · <span class="${worksCls(os.works)}">${worksLabel(os.works)}</span></p>
+        <p class="up">Next ${r.forward_minutes}m up: <strong>${os.up_pct ?? "—"}%</strong></p>
+        <p>Avg next: <strong>${os.avg_fwd_ret == null ? "—" : ((os.avg_fwd_ret >= 0 ? "+" : "") + os.avg_fwd_ret + "%")}</strong></p>
+        <p>High vol up%: ${os.high_vol_up_pct ?? "—"} · Low vol up%: ${os.low_vol_up_pct ?? "—"}</p>
+      </div>
+      <div class="path-card">
+        <h3>RSI ≥ 70 (overbought)</h3>
+        <p>N=<strong>${ob.n ?? 0}</strong> · <span class="${worksCls(ob.works)}">${worksLabel(ob.works)}</span></p>
+        <p class="down">Next down: <strong>${ob.down_pct ?? "—"}%</strong></p>
+        <p>Avg next: <strong>${ob.avg_fwd_ret == null ? "—" : ((ob.avg_fwd_ret >= 0 ? "+" : "") + ob.avg_fwd_ret + "%")}</strong></p>
+        <p>Expect fade after overbought</p>
+      </div>
+      <div class="path-card">
+        <h3>Cross up from oversold</h3>
+        <p>N=<strong>${cu.n ?? 0}</strong> · <span class="${worksCls(cu.works)}">${worksLabel(cu.works)}</span></p>
+        <p>Next up: <strong>${cu.up_pct ?? "—"}%</strong></p>
+        <p>Avg next: <strong>${cu.avg_fwd_ret == null ? "—" : ((cu.avg_fwd_ret >= 0 ? "+" : "") + cu.avg_fwd_ret + "%")}</strong></p>
+      </div>
+      <div class="path-card">
+        <h3>Volume alone</h3>
+        <p>High vol bars: up <strong>${vol.high_volume?.up_pct ?? "—"}%</strong> (N=${vol.high_volume?.n ?? 0})</p>
+        <p>Low vol bars: up <strong>${vol.low_volume?.up_pct ?? "—"}%</strong> (N=${vol.low_volume?.n ?? 0})</p>
+        <p>${vol.note || ""}</p>
+      </div>
+    `;
+
+    const recent = (os.recent || []).map((h) => {
+      const cls = h.fwd_up ? "up" : "down";
+      return `<tr>
+        <td>${fmtDate(h.date)} ${h.time || ""}</td>
+        <td>${h.rsi}</td>
+        <td>${h.price}</td>
+        <td>${h.vol_z ?? "—"}</td>
+        <td class="${cls}">${h.fwd_ret >= 0 ? "+" : ""}${h.fwd_ret}%</td>
+      </tr>`;
+    }).join("");
+
+    $("rsiRecent").innerHTML = `
+      <div class="table-wrap">
+        <table class="moves-table">
+          <thead><tr><th>When (oversold)</th><th>RSI</th><th>Price</th><th>Vol z</th><th>Next ${r.forward_minutes}m</th></tr></thead>
+          <tbody>${recent || "<tr><td colspan='5'>No oversold hits</td></tr>"}</tbody>
+        </table>
+      </div>
+    `;
   }
 
   async function loadLiveBias() {
@@ -978,6 +1055,11 @@
   liveBiasTimer = setInterval(() => {
     try { loadLiveBias(); } catch (e) { /* ignore */ }
   }, 60000);
+
+  $("runRsi")?.addEventListener("click", loadRsi);
+  ["rsiSymbol", "rsiInterval", "rsiForward"].forEach((id) => {
+    $(id)?.addEventListener("change", loadRsi);
+  });
 
   $("reload").addEventListener("click", load);
   $("symbol").addEventListener("change", load);

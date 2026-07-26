@@ -134,6 +134,40 @@
   </section>
 
   <section class="section">
+    <h2>RSI + volume study</h2>
+    <p class="hint">Historical RSI(14) on intraday bars. Oversold (≤30) expects a bounce; overbought (≥70) expects a fade. Volume z-score checks if size confirms the move. Not a live predictor.</p>
+    <div class="controls compare-controls">
+      <label>
+        Symbol
+        <select id="rsiSymbol">
+          <option value="SOXL" selected>SOXL</option>
+          <option value="QQQ">QQQ</option>
+        </select>
+      </label>
+      <label>
+        Bar size
+        <select id="rsiInterval">
+          <option value="5" selected>5 min</option>
+          <option value="15">15 min</option>
+          <option value="1">1 min</option>
+        </select>
+      </label>
+      <label>
+        Look ahead
+        <select id="rsiForward">
+          <option value="3">3 bars</option>
+          <option value="6" selected>6 bars</option>
+          <option value="12">12 bars</option>
+        </select>
+      </label>
+      <button type="button" id="runRsi">Analyze RSI</button>
+    </div>
+    <p id="rsiSummaryText" class="hint"></p>
+    <div id="rsiCards" class="compare-grid"></div>
+    <div id="rsiRecent" class="big-move-list"></div>
+  </section>
+
+  <section class="section">
     <h2>Scenario explorer</h2>
     <p class="hint" id="scenarioHint">If → Then patterns from history. Uses selected Symbol + Interval. Small N is labeled weak / too few.</p>
     <div class="controls compare-controls">
