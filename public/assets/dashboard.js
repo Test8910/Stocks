@@ -12,16 +12,23 @@
     return `${d}-${m}-${y}`;
   }
 
+  function compareQuery() {
+    const preset = $("comparePreset")?.value || "weekday_5";
+    const limit = $("compareLimit")?.value || "4";
+    if (preset === "last4_days") {
+      return `&compare_mode=last4_days&compare_limit=${encodeURIComponent(limit)}`;
+    }
+    const wd = preset.replace("weekday_", "");
+    return `&compare_mode=last4_weekday&compare_weekday=${encodeURIComponent(wd)}&compare_limit=${encodeURIComponent(limit)}`;
+  }
+
   async function load() {
     const symbol = $("symbol").value;
     const minDollars = $("minDollars").value;
     const interval = $("interval").value;
-    const dateA = $("compareA")?.value || "";
-    const dateB = $("compareB")?.value || "";
     $("meta").textContent = `Loading ${symbol} (${interval}m, ≥$${minDollars})…`;
     let url = `api.php?action=summary&symbol=${encodeURIComponent(symbol)}&min_dollars=${encodeURIComponent(minDollars)}&interval=${encodeURIComponent(interval)}`;
-    if (dateA) url += `&date_a=${encodeURIComponent(dateA)}`;
-    if (dateB) url += `&date_b=${encodeURIComponent(dateB)}`;
+    url += compareQuery();
     const res = await fetch(url);
     const data = await res.json();
     if (!data.ok) {
@@ -39,7 +46,6 @@
     $("patternHint").innerHTML = `Recalculated from your selected options: <strong>${iv}-minute</strong> interval and <strong>$${min$}+</strong> moves, plus ≥60% up/down probability windows.`;
     $("meta").textContent = `${data.symbol}: ${iv}-min interval · ${moveCount} moves ≥$${min$} · ${data.session_count} sessions`;
     fillSessionDates();
-    fillCompareControls();
     renderCompare();
     renderBigMoves();
     renderSessionPrice();
@@ -49,55 +55,25 @@
     renderHeat();
   }
 
-  function fillCompareControls() {
-    const wc = summary.week_compare || {};
-    const sessions = summary.sessions || [];
-    const fill = (sel, selected) => {
-      const prev = selected || sel.value;
-      sel.innerHTML = "";
-      sessions.forEach((s) => {
-        const opt = document.createElement("option");
-        opt.value = s.date;
-        opt.textContent = `${fmtDate(s.date)} (${s.label})`;
-        sel.appendChild(opt);
-      });
-      if (prev && [...sel.options].some((o) => o.value === prev)) sel.value = prev;
-      else if (selected) sel.value = selected;
-    };
-
-    fill($("compareA"), wc.date_a);
-    fill($("compareB"), wc.date_b);
-
-    const pairSel = $("comparePair");
-    const prevPair = pairSel.value;
-    pairSel.innerHTML = '<option value="">Custom dates</option>';
-    (wc.pairs || []).forEach((p) => {
-      if (!p.recent || !p.prior) return;
-      const opt = document.createElement("option");
-      opt.value = `${p.recent}|${p.prior}`;
-      opt.textContent = `${p.label}: ${fmtDate(p.recent)} vs ${fmtDate(p.prior)}`;
-      pairSel.appendChild(opt);
-    });
-    if (wc.date_a && wc.date_b) {
-      const auto = `${wc.date_a}|${wc.date_b}`;
-      if ([...pairSel.options].some((o) => o.value === auto)) pairSel.value = auto;
-      else if (prevPair && [...pairSel.options].some((o) => o.value === prevPair)) pairSel.value = prevPair;
-    }
-  }
-
   function renderCompare() {
     const box = $("compareSummary");
+    const label = $("compareDatesLabel");
     const cmp = summary.week_compare?.comparison;
-    if (!cmp) {
-      box.innerHTML = "<p class='hint'>Pick two dates (same weekday works best) and click Compare.</p>";
+    const dates = summary.week_compare?.dates || [];
+    if (label) {
+      label.textContent = dates.length
+        ? `Comparing: ${dates.map(fmtDate).join(" · ")}`
+        : "";
+    }
+    if (!cmp || !(cmp.days || []).length) {
+      box.innerHTML = "<p class='hint'>Not enough sessions yet for this comparison.</p>";
       return;
     }
     const min$ = summary.min_dollars ?? 5;
-    const a = cmp.a;
-    const b = cmp.b;
-    const card = (d, tone) => `
-      <div class="path-card ${tone}">
-        <h3>${fmtDate(d.date)} · ${d.label}</h3>
+    const days = cmp.days;
+    box.innerHTML = days.map((d) => `
+      <div class="path-card" style="border-color:${d.color}">
+        <h3><span style="color:${d.color}">●</span> ${fmtDate(d.date)} · ${d.label}</h3>
         <p>Open <strong>$${d.open}</strong> → Close <strong>$${d.close}</strong>
           (<span class="${(d.day_change_pct ?? 0) >= 0 ? "up" : "down"}">${(d.day_change_pct ?? 0) >= 0 ? "+" : ""}${d.day_change_pct}%</span>)</p>
         <p class="low">Low: <strong>$${d.low_price}</strong> at <strong>${d.low_time}</strong></p>
@@ -105,99 +81,52 @@
         <p>${d.high_after_low ? `Low→High in ${d.minutes_low_to_high}m (+${d.move_pct}%)` : "High before low"}</p>
         <p>≥$${min$} moves: <strong>${d.move_count}</strong></p>
         <ul class="session-moves">
-          ${(d.moves || []).slice(0, 6).map((m) => {
+          ${(d.moves || []).slice(0, 5).map((m) => {
             const cls = m.direction === "up" ? "up" : "down";
             const sign = m.direction === "up" ? "+" : "−";
             return `<li class="${cls}">${m.direction} ${sign}$${Number(m.dollars).toFixed(2)} · ${m.start_time}→${m.end_time}</li>`;
           }).join("") || "<li>None</li>"}
         </ul>
-      </div>`;
-
-    box.innerHTML = `
-      ${card(a, "compare-a")}
-      ${card(b, "compare-b")}
-      <div class="path-card">
-        <h3>Difference</h3>
-        <p>${cmp.same_weekday ? "Same weekday" : "Different weekdays"} · ${fmtDate(a.date)} vs ${fmtDate(b.date)}</p>
-        <p>Day change: <strong>${a.day_change_pct}%</strong> vs <strong>${b.day_change_pct}%</strong>
-          (Δ ${(a.day_change_pct - b.day_change_pct).toFixed(3)} pts)</p>
-        <p>Low time: <strong>${a.low_time}</strong> vs <strong>${b.low_time}</strong></p>
-        <p>High time: <strong>${a.high_time}</strong> vs <strong>${b.high_time}</strong></p>
-        <p>≥$${min$} move count: <strong>${a.move_count}</strong> vs <strong>${b.move_count}</strong></p>
       </div>
-    `;
+    `).join("");
 
     const labels = cmp.times;
+    const tickEvery = Math.max(1, Math.round(labels.length / 12));
     const opts = chartOptions("% of open (100 = open)");
     opts.scales.x.ticks.callback = function (v, i) {
-      return i % Math.max(1, Math.round(labels.length / 12)) === 0 ? labels[i] : "";
+      return i % tickEvery === 0 ? labels[i] : "";
     };
+
+    const normDatasets = (cmp.series_norm || []).map((s) => ({
+      label: `${fmtDate(s.date)} (${s.label})`,
+      data: s.data,
+      borderColor: s.color,
+      borderWidth: 2,
+      pointRadius: 0,
+      tension: 0.1,
+      spanGaps: false,
+    }));
+    const priceDatasets = (cmp.series_price || []).map((s) => ({
+      label: `${fmtDate(s.date)} price`,
+      data: s.data,
+      borderColor: s.color,
+      borderWidth: 2,
+      pointRadius: 0,
+      tension: 0.1,
+      spanGaps: false,
+    }));
 
     if (compareNormChart) compareNormChart.destroy();
     compareNormChart = new Chart($("compareNormChart").getContext("2d"), {
       type: "line",
-      data: {
-        labels,
-        datasets: [
-          {
-            label: `${fmtDate(a.date)} (indexed)`,
-            data: cmp.norm_a,
-            borderColor: "#3dbb8b",
-            borderWidth: 2,
-            pointRadius: 0,
-            tension: 0.1,
-            spanGaps: false,
-          },
-          {
-            label: `${fmtDate(b.date)} (indexed)`,
-            data: cmp.norm_b,
-            borderColor: "#7ec8ff",
-            borderWidth: 2,
-            pointRadius: 0,
-            tension: 0.1,
-            spanGaps: false,
-          },
-          {
-            label: "Diff (A − B)",
-            data: cmp.diff_norm,
-            borderColor: "#f0c674",
-            borderWidth: 1,
-            borderDash: [4, 4],
-            pointRadius: 0,
-            tension: 0.1,
-            spanGaps: false,
-          },
-        ],
-      },
+      data: { labels, datasets: normDatasets },
       options: opts,
     });
 
     if (comparePriceChart) comparePriceChart.destroy();
     comparePriceChart = new Chart($("comparePriceChart").getContext("2d"), {
       type: "line",
-      data: {
-        labels,
-        datasets: [
-          {
-            label: `${fmtDate(a.date)} price`,
-            data: cmp.price_a,
-            borderColor: "#3dbb8b",
-            borderWidth: 2,
-            pointRadius: 0,
-            tension: 0.1,
-            spanGaps: false,
-          },
-          {
-            label: `${fmtDate(b.date)} price`,
-            data: cmp.price_b,
-            borderColor: "#7ec8ff",
-            borderWidth: 2,
-            pointRadius: 0,
-            tension: 0.1,
-            spanGaps: false,
-          },
-        ],
-      },
+      data: { labels, datasets: priceDatasets },
       options: chartOptions("Price ($)"),
     });
   }
@@ -689,13 +618,7 @@
   $("sessionDate").addEventListener("change", () => summary && renderSessionPrice());
   $("weekday").addEventListener("change", () => summary && renderAvgPrice());
   $("runCompare").addEventListener("click", load);
-  $("comparePair").addEventListener("change", () => {
-    const v = $("comparePair").value;
-    if (!v) return;
-    const [a, b] = v.split("|");
-    $("compareA").value = a;
-    $("compareB").value = b;
-    load();
-  });
+  $("comparePreset").addEventListener("change", load);
+  $("compareLimit").addEventListener("change", load);
   load();
 })();

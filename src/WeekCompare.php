@@ -5,24 +5,31 @@ declare(strict_types=1);
 namespace Stocks;
 
 /**
- * Compare two session days (e.g. this Friday vs last Friday).
+ * Compare up to 4 session days (same weekday across weeks, or last 4 trading days).
  */
 final class WeekCompare
 {
+    private const COLORS = ['#3dbb8b', '#7ec8ff', '#f0c674', '#e06c75'];
+
     public function __construct(private readonly SessionFilter $session)
     {
     }
 
     /**
-     * @param list<array<string,mixed>> $sessions Aggregated session paths
-     * @param list<array<string,mixed>> $moves Big-move list for current options
-     * @return array{
-     *   pairs: list<array{weekday:int,label:string,recent:?string,prior:?string}>,
-     *   comparison: ?array<string,mixed>
-     * }
+     * @param list<array<string,mixed>> $sessions
+     * @param list<array<string,mixed>> $moves
+     * @param list<string> $selectedDates
+     * @return array<string,mixed>
      */
-    public function build(array $sessions, array $moves, ?string $dateA, ?string $dateB): array
-    {
+    public function build(
+        array $sessions,
+        array $moves,
+        array $selectedDates = [],
+        string $mode = 'last4_weekday',
+        int $weekday = 5,
+        int $limit = 4
+    ): array {
+        $limit = max(2, min(4, $limit));
         $byDate = [];
         foreach ($sessions as $s) {
             $byDate[$s['date']] = $s;
@@ -38,6 +45,28 @@ final class WeekCompare
         }
         unset($dates);
 
+        $allDates = array_keys($byDate);
+        rsort($allDates);
+
+        $presets = [];
+        $presets[] = [
+            'id' => 'last4_days',
+            'label' => 'Last 4 trading days',
+            'dates' => array_slice($allDates, 0, $limit),
+        ];
+        for ($wd = 1; $wd <= 5; $wd++) {
+            $dates = array_slice($byWeekday[$wd] ?? [], 0, $limit);
+            if (count($dates) >= 2) {
+                $presets[] = [
+                    'id' => 'weekday_' . $wd,
+                    'label' => 'Last ' . count($dates) . ' ' . $labels[$wd] . 's',
+                    'dates' => $dates,
+                    'weekday' => $wd,
+                ];
+            }
+        }
+
+        // Legacy 2-day pairs for older UI bits
         $pairs = [];
         for ($wd = 1; $wd <= 5; $wd++) {
             $dates = $byWeekday[$wd] ?? [];
@@ -46,101 +75,144 @@ final class WeekCompare
                 'label' => $labels[$wd],
                 'recent' => $dates[0] ?? null,
                 'prior' => $dates[1] ?? null,
+                'dates' => array_slice($dates, 0, $limit),
             ];
         }
 
-        if (($dateA === null || $dateA === '') && ($dateB === null || $dateB === '')) {
-            // Default: latest Friday vs prior Friday, else first available pair
-            $friday = $pairs[4];
-            if ($friday['recent'] && $friday['prior']) {
-                $dateA = $friday['recent'];
-                $dateB = $friday['prior'];
+        $selectedDates = array_values(array_filter($selectedDates, static fn ($d) => $d !== '' && isset($byDate[$d])));
+        if ($selectedDates === []) {
+            if ($mode === 'last4_days') {
+                $selectedDates = array_slice($allDates, 0, $limit);
             } else {
-                foreach ($pairs as $p) {
-                    if ($p['recent'] && $p['prior']) {
-                        $dateA = $p['recent'];
-                        $dateB = $p['prior'];
-                        break;
-                    }
+                $wd = max(1, min(5, $weekday));
+                $selectedDates = array_slice($byWeekday[$wd] ?? [], 0, $limit);
+                if (count($selectedDates) < 2) {
+                    $selectedDates = array_slice($allDates, 0, $limit);
+                    $mode = 'last4_days';
+                } else {
+                    $mode = 'last4_weekday';
                 }
             }
         }
 
-        $comparison = null;
-        if ($dateA && $dateB && isset($byDate[$dateA], $byDate[$dateB])) {
-            $comparison = $this->compareDays($byDate[$dateA], $byDate[$dateB], $moves);
-        }
+        $selectedDates = array_slice($selectedDates, 0, $limit);
+        $comparison = count($selectedDates) >= 2
+            ? $this->compareMany($selectedDates, $byDate, $moves)
+            : null;
 
         return [
+            'mode' => $mode,
+            'weekday' => $weekday,
+            'limit' => $limit,
+            'presets' => $presets,
             'pairs' => $pairs,
-            'date_a' => $dateA,
-            'date_b' => $dateB,
+            'dates' => $selectedDates,
+            'date_a' => $selectedDates[0] ?? null,
+            'date_b' => $selectedDates[1] ?? null,
             'comparison' => $comparison,
         ];
     }
 
     /**
-     * @param array<string,mixed> $a
-     * @param array<string,mixed> $b
+     * @param list<string> $dates
+     * @param array<string,array<string,mixed>> $byDate
      * @param list<array<string,mixed>> $moves
      * @return array<string,mixed>
      */
-    private function compareDays(array $a, array $b, array $moves): array
+    private function compareMany(array $dates, array $byDate, array $moves): array
     {
-        $mapA = [];
-        foreach ($a['points'] as $pt) {
-            $mapA[(int) $pt['minute_of_day']] = (float) $pt['price'];
-        }
-        $mapB = [];
-        foreach ($b['points'] as $pt) {
-            $mapB[(int) $pt['minute_of_day']] = (float) $pt['price'];
+        $days = [];
+        $minuteSets = [];
+        foreach ($dates as $i => $date) {
+            $session = $byDate[$date];
+            $map = [];
+            foreach ($session['points'] as $pt) {
+                $map[(int) $pt['minute_of_day']] = (float) $pt['price'];
+            }
+            $minuteSets[] = array_keys($map);
+            $open = $session['points'][0]['price'] ?? null;
+            $close = $session['points'][count($session['points']) - 1]['price'] ?? null;
+            $dayChange = ($open && $close) ? (($close - $open) / $open) * 100.0 : null;
+            $dayMoves = array_values(array_filter($moves, static fn ($m) => $m['date'] === $date));
+            $summary = $this->daySummary($session, $open, $close, $dayChange, $dayMoves);
+            $summary['color'] = self::COLORS[$i % count(self::COLORS)];
+            $summary['price_map'] = $map;
+            $days[] = $summary;
         }
 
-        $minutes = array_values(array_unique(array_merge(array_keys($mapA), array_keys($mapB))));
+        $minutes = [];
+        foreach ($minuteSets as $set) {
+            foreach ($set as $m) {
+                $minutes[$m] = true;
+            }
+        }
+        $minutes = array_keys($minutes);
         sort($minutes);
 
-        $openA = $a['points'][0]['price'] ?? null;
-        $openB = $b['points'][0]['price'] ?? null;
-        $closeA = $a['points'][count($a['points']) - 1]['price'] ?? null;
-        $closeB = $b['points'][count($b['points']) - 1]['price'] ?? null;
-
-        $times = [];
-        $priceA = [];
-        $priceB = [];
-        $normA = [];
-        $normB = [];
-        $diffNorm = [];
-
-        foreach ($minutes as $m) {
-            $times[] = $this->session->minuteLabel($m);
-            $pa = $mapA[$m] ?? null;
-            $pb = $mapB[$m] ?? null;
-            $priceA[] = $pa;
-            $priceB[] = $pb;
-            $na = ($pa !== null && $openA) ? ($pa / $openA) * 100.0 : null;
-            $nb = ($pb !== null && $openB) ? ($pb / $openB) * 100.0 : null;
-            $normA[] = $na !== null ? round($na, 4) : null;
-            $normB[] = $nb !== null ? round($nb, 4) : null;
-            $diffNorm[] = ($na !== null && $nb !== null) ? round($na - $nb, 4) : null;
+        $times = array_map(fn ($m) => $this->session->minuteLabel($m), $minutes);
+        $seriesPrice = [];
+        $seriesNorm = [];
+        foreach ($days as $idx => $day) {
+            $prices = [];
+            $norms = [];
+            $open = $day['open'];
+            foreach ($minutes as $m) {
+                $p = $day['price_map'][$m] ?? null;
+                $prices[] = $p;
+                $norms[] = ($p !== null && $open) ? round(($p / $open) * 100.0, 4) : null;
+            }
+            $seriesPrice[] = [
+                'date' => $day['date'],
+                'label' => $day['label'],
+                'color' => $day['color'],
+                'data' => $prices,
+            ];
+            $seriesNorm[] = [
+                'date' => $day['date'],
+                'label' => $day['label'],
+                'color' => $day['color'],
+                'data' => $norms,
+            ];
+            unset($days[$idx]['price_map']);
         }
 
-        $movesA = array_values(array_filter($moves, static fn ($m) => $m['date'] === $a['date']));
-        $movesB = array_values(array_filter($moves, static fn ($m) => $m['date'] === $b['date']));
-
-        $dayChangeA = ($openA && $closeA) ? (($closeA - $openA) / $openA) * 100.0 : null;
-        $dayChangeB = ($openB && $closeB) ? (($closeB - $openB) / $openB) * 100.0 : null;
+        $weekdays = array_unique(array_column($days, 'weekday'));
+        // Keep backward-compatible a/b fields for first two days
+        $a = $days[0] ?? null;
+        $b = $days[1] ?? null;
 
         return [
-            'a' => $this->daySummary($a, $openA, $closeA, $dayChangeA, $movesA),
-            'b' => $this->daySummary($b, $openB, $closeB, $dayChangeB, $movesB),
-            'same_weekday' => (int) $a['weekday'] === (int) $b['weekday'],
+            'days' => array_values($days),
+            'count' => count($days),
+            'same_weekday' => count($weekdays) === 1,
             'times' => $times,
-            'price_a' => $priceA,
-            'price_b' => $priceB,
-            'norm_a' => $normA,
-            'norm_b' => $normB,
-            'diff_norm' => $diffNorm,
+            'series_price' => $seriesPrice,
+            'series_norm' => $seriesNorm,
+            'a' => $a,
+            'b' => $b,
+            'price_a' => $seriesPrice[0]['data'] ?? [],
+            'price_b' => $seriesPrice[1]['data'] ?? [],
+            'norm_a' => $seriesNorm[0]['data'] ?? [],
+            'norm_b' => $seriesNorm[1]['data'] ?? [],
+            'diff_norm' => $this->diffSeries($seriesNorm[0]['data'] ?? [], $seriesNorm[1]['data'] ?? []),
         ];
+    }
+
+    /**
+     * @param list<?float> $a
+     * @param list<?float> $b
+     * @return list<?float>
+     */
+    private function diffSeries(array $a, array $b): array
+    {
+        $out = [];
+        $n = max(count($a), count($b));
+        for ($i = 0; $i < $n; $i++) {
+            $va = $a[$i] ?? null;
+            $vb = $b[$i] ?? null;
+            $out[] = ($va !== null && $vb !== null) ? round($va - $vb, 4) : null;
+        }
+        return $out;
     }
 
     /**

@@ -154,13 +154,22 @@ try {
             $times[] = $session->minuteLabel($m);
         }
 
-        $dateA = isset($_GET['date_a']) ? (string) $_GET['date_a'] : null;
-        $dateB = isset($_GET['date_b']) ? (string) $_GET['date_b'] : null;
+        $dateA = isset($_GET['date_a']) ? (string) $_GET['date_a'] : '';
+        $dateB = isset($_GET['date_b']) ? (string) $_GET['date_b'] : '';
+        $datesParam = isset($_GET['dates']) ? (string) $_GET['dates'] : '';
+        $selectedDates = $datesParam !== ''
+            ? array_values(array_filter(array_map('trim', explode(',', $datesParam))))
+            : array_values(array_filter([$dateA, $dateB]));
+        $compareMode = (string) ($_GET['compare_mode'] ?? 'last4_weekday');
+        $compareWeekday = isset($_GET['compare_weekday']) ? (int) $_GET['compare_weekday'] : 5;
+        $compareLimit = isset($_GET['compare_limit']) ? (int) $_GET['compare_limit'] : 4;
         $weekCompare = (new WeekCompare($session))->build(
             $paths,
             $bigMoves['moves'] ?? [],
-            $dateA,
-            $dateB
+            $selectedDates,
+            $compareMode,
+            $compareWeekday,
+            $compareLimit
         );
 
         return [

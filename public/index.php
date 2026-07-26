@@ -64,25 +64,31 @@
   <p id="meta" class="meta">Loading…</p>
 
   <section class="section">
-    <h2>Week-over-week comparison</h2>
-    <p class="hint">Compare the same weekday across weeks (example: 24-07-2026 vs 17-07-2026). Uses your selected Interval and Move size.</p>
+    <h2>Last 4 weekdays comparison</h2>
+    <p class="hint">Compare up to 4 days — last 4 trading days, or the last 4 Mondays/Tuesdays/… Uses your selected Interval and Move size.</p>
     <div class="controls compare-controls">
       <label>
-        Recent day
-        <select id="compareA"></select>
+        Compare
+        <select id="comparePreset">
+          <option value="last4_days">Last 4 trading days</option>
+          <option value="weekday_5" selected>Last Fridays</option>
+          <option value="weekday_1">Last Mondays</option>
+          <option value="weekday_2">Last Tuesdays</option>
+          <option value="weekday_3">Last Wednesdays</option>
+          <option value="weekday_4">Last Thursdays</option>
+        </select>
       </label>
       <label>
-        Prior week
-        <select id="compareB"></select>
-      </label>
-      <label>
-        Quick pair
-        <select id="comparePair">
-          <option value="">Custom dates</option>
+        How many
+        <select id="compareLimit">
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4" selected>4</option>
         </select>
       </label>
       <button type="button" id="runCompare">Compare</button>
     </div>
+    <p id="compareDatesLabel" class="hint"></p>
     <div id="compareSummary" class="compare-grid"></div>
     <div class="chart-wrap">
       <canvas id="compareNormChart" height="120"></canvas>
