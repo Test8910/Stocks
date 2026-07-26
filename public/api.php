@@ -122,10 +122,18 @@ try {
                 $weekdayAvgs[$wd] = $stats->weekdayAvgPrice($symbol, $wd);
             }
             $bmCfg = $config['big_moves'] ?? [];
+            $allowed = [2.0, 3.0, 4.0, 5.0, 6.0];
+            $requested = isset($_GET['min_dollars']) ? (float) $_GET['min_dollars'] : null;
+            $minDollars = in_array($requested, $allowed, true)
+                ? $requested
+                : (float) ($bmCfg['min_dollars'] ?? 5.0);
+            if (!in_array($minDollars, $allowed, true)) {
+                $minDollars = 5.0;
+            }
             $bigMoves = (new BigMoveDetector(
                 $session,
-                (float) ($bmCfg['min_dollars'] ?? 5.0),
-                (float) ($bmCfg['big_dollars'] ?? 5.0),
+                $minDollars,
+                $minDollars,
                 (float) ($bmCfg['reversal_dollars'] ?? 1.5),
                 (int) ($bmCfg['max_window_minutes'] ?? 90)
             ))->analyze($paths);

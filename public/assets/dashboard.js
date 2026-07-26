@@ -6,8 +6,11 @@
 
   async function load() {
     const symbol = $("symbol").value;
-    $("meta").textContent = `Loading ${symbol}…`;
-    const res = await fetch(`api.php?action=summary&symbol=${encodeURIComponent(symbol)}`);
+    const minDollars = $("minDollars").value;
+    $("meta").textContent = `Loading ${symbol} (≥$${minDollars})…`;
+    const res = await fetch(
+      `api.php?action=summary&symbol=${encodeURIComponent(symbol)}&min_dollars=${encodeURIComponent(minDollars)}`
+    );
     const data = await res.json();
     if (!data.ok) {
       $("meta").textContent = data.error || "Failed to load";
@@ -16,7 +19,9 @@
     summary = data;
     const bm = data.big_moves?.thresholds;
     const moveCount = data.big_moves?.moves?.length ?? 0;
-    const min$ = bm?.min ?? 5;
+    const min$ = bm?.min ?? Number(minDollars);
+    $("bigMoveTitle").textContent = `$${min$} and up moves — when they happen`;
+    $("bigMoveHint").innerHTML = `Swings of <strong>$${min$} or more</strong> (up or down). Change “Move size” above to switch between $2–$6.`;
     $("meta").textContent = `${data.symbol}: ${data.bar_count} bars · ${moveCount} moves ≥$${min$} · ${(data.patterns.threshold * 100).toFixed(0)}% pattern threshold`;
     fillSessionDates();
     renderBigMoves();
@@ -485,6 +490,7 @@
 
   $("reload").addEventListener("click", load);
   $("symbol").addEventListener("change", load);
+  $("minDollars").addEventListener("change", load);
   $("sessionDate").addEventListener("change", () => summary && renderSessionPrice());
   $("weekday").addEventListener("change", () => summary && renderAvgPrice());
   load();
