@@ -223,9 +223,14 @@ try {
             break;
 
         case 'global_lead': {
-            $asia = strtoupper((string) ($_GET['asia'] ?? 'HSTECH'));
             $uk = strtoupper((string) ($_GET['uk'] ?? 'EQQQ'));
             $us = strtoupper((string) ($_GET['us'] ?? 'QQQ'));
+            if (!in_array($uk, ['EQQQ', 'FTSE'], true)) {
+                $uk = 'EQQQ';
+            }
+            if (!in_array($us, ['QQQ', 'SOXL'], true)) {
+                $us = 'QQQ';
+            }
             $threshold = isset($_GET['threshold_pct']) ? (float) $_GET['threshold_pct'] : 0.3;
             $allowed = [0.2, 0.3, 0.5, 1.0];
             $okT = false;
@@ -240,7 +245,7 @@ try {
                 $threshold = 0.3;
             }
             $meta = SymbolSessions::all($config);
-            $result = (new GlobalLeadLag($stats))->analyze($meta, $asia, $uk, $us, $threshold);
+            $result = (new GlobalLeadLag($stats))->analyze($meta, $uk, $us, $threshold);
             echo json_encode($result);
             break;
         }

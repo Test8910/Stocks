@@ -61,12 +61,11 @@
   }
 
   async function loadGlobalLead() {
-    const asia = $("globalAsia")?.value || "HSTECH";
     const uk = $("globalUk")?.value || "EQQQ";
     const us = $("globalUs")?.value || "QQQ";
     const threshold = $("globalThreshold")?.value || "0.3";
-    if ($("globalSummaryText")) $("globalSummaryText").textContent = "Comparing Asia → UK → US…";
-    const url = `api.php?action=global_lead&asia=${encodeURIComponent(asia)}&uk=${encodeURIComponent(uk)}&us=${encodeURIComponent(us)}&threshold_pct=${encodeURIComponent(threshold)}`;
+    if ($("globalSummaryText")) $("globalSummaryText").textContent = "Comparing UK → US…";
+    const url = `api.php?action=global_lead&uk=${encodeURIComponent(uk)}&us=${encodeURIComponent(us)}&threshold_pct=${encodeURIComponent(threshold)}`;
     const res = await fetch(url);
     const data = await res.json();
     if (!data.ok && data.n_days == null) {
@@ -86,27 +85,24 @@
 
     $("globalCards").innerHTML = `
       <div class="path-card">
-        <h3>Overlap</h3>
-        <p><strong>${g.asia_symbol}</strong> → <strong>${g.uk_symbol}</strong> → <strong>${g.us_symbol}</strong></p>
+        <h3>Pair</h3>
+        <p><strong>${g.uk_symbol}</strong> → <strong>${g.us_symbol}</strong></p>
         <p>Days: <strong>${g.n_days}</strong> · <span class="${strengthClass}">${g.strength}</span></p>
         <p>Lead move ≥ <strong>${g.threshold_pct}%</strong></p>
       </div>
       <div class="path-card">
         <h3>Same direction</h3>
-        <p>Asia → US: <strong>${agr.asia_us_same_dir_pct ?? "—"}%</strong></p>
         <p>UK → US: <strong>${agr.uk_us_same_dir_pct ?? "—"}%</strong></p>
         <p>N: ${agr.n ?? 0}</p>
       </div>
       <div class="path-card">
         <h3>Correlation</h3>
-        <p>Asia vs US: <strong>${agr.corr_asia_us != null ? agr.corr_asia_us : "—"}</strong></p>
         <p>UK vs US: <strong>${agr.corr_uk_us != null ? agr.corr_uk_us : "—"}</strong></p>
       </div>
       <div class="path-card">
-        <h3>Why these</h3>
-        <p>HSTECH ≈ Asia tech (QQQ-like)</p>
-        <p>TWII ≈ Asia semis (SOXL theme)</p>
-        <p>EQQQ.L = Nasdaq-100 in London hours</p>
+        <h3>Why EQQQ</h3>
+        <p>Same Nasdaq-100 basket as QQQ</p>
+        <p>Trades in London hours before US cash open</p>
       </div>
     `;
 
@@ -123,14 +119,12 @@
     }).join("");
 
     const rows = (g.days || []).map((d) => {
-      const aCls = d.asia_ret >= 0 ? "up" : "down";
       const uCls = d.uk_ret >= 0 ? "up" : "down";
       const sCls = d.us_ret >= 0 ? "up" : "down";
       const fmt = (v) => `${v >= 0 ? "+" : ""}${v}%`;
       return `<tr>
         <td>${fmtDate(d.date)}</td>
         <td>${d.label}</td>
-        <td class="${aCls}">${fmt(d.asia_ret)}</td>
         <td class="${uCls}">${fmt(d.uk_ret)}</td>
         <td class="${sCls}">${fmt(d.us_ret)}</td>
       </tr>`;
@@ -141,9 +135,9 @@
         <table class="moves-table">
           <thead><tr>
             <th>Date</th><th>Day</th>
-            <th>${g.asia_symbol}</th><th>${g.uk_symbol}</th><th>${g.us_symbol}</th>
+            <th>${g.uk_symbol}</th><th>${g.us_symbol}</th>
           </tr></thead>
-          <tbody>${rows || "<tr><td colspan='5'>No overlapping days — run ingest for Asia/UK symbols</td></tr>"}</tbody>
+          <tbody>${rows || "<tr><td colspan='4'>No overlapping days — run ingest for EQQQ</td></tr>"}</tbody>
         </table>
       </div>
     `;

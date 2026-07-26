@@ -14,8 +14,8 @@
   <header class="top">
     <div>
       <p class="brand">Stocks</p>
-      <h1>Price, low, then high — US, UK &amp; Asia</h1>
-      <p class="sub">US intraday patterns plus Asia → UK → US lead-lag (markets that open first)</p>
+      <h1>Price, low, then high — UK lead &amp; US cash</h1>
+      <p class="sub">US intraday patterns plus UK → US lead-lag (London hours before US cash open)</p>
     </div>
     <div class="controls">
       <label>
@@ -64,19 +64,11 @@
   <p id="meta" class="meta">Loading…</p>
 
   <section class="section">
-    <h2>Asia → UK → US lead-lag</h2>
-    <p class="hint" id="globalHint">Asia and UK open before US cash. Pick QQQ-like proxies and see whether the US session usually follows the same direction.</p>
+    <h2>UK → US lead-lag</h2>
+    <p class="hint" id="globalHint">London prints Nasdaq-100 (EQQQ.L) before the US cash open. See whether QQQ/SOXL usually follow the same direction.</p>
     <div class="controls compare-controls">
       <label>
-        Asia (opens first)
-        <select id="globalAsia">
-          <option value="HSTECH" selected>HSTECH — Hang Seng TECH (~QQQ Asia)</option>
-          <option value="TWII">TWII — Taiwan (semis)</option>
-          <option value="N225">N225 — Nikkei 225</option>
-        </select>
-      </label>
-      <label>
-        UK / Europe
+        UK lead
         <select id="globalUk">
           <option value="EQQQ" selected>EQQQ.L — Nasdaq-100 (London hours)</option>
           <option value="FTSE">FTSE — FTSE 100</option>

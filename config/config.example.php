@@ -45,13 +45,10 @@ return [
     ],
 
     /*
-     * Symbols by region. Asia & UK open before US cash — use for lead-lag.
-     * QQQ analogues:
-     *   Asia tech  → HSTECH (3067.HK Hang Seng TECH ETF)
-     *   Asia semis → TWII   (^TWII Taiwan — close to Nasdaq/SOXL theme)
-     *   Japan risk → N225   (^N225)
-     *   UK Nasdaq  → EQQQ   (EQQQ.L Invesco Nasdaq-100 UCITS, London hours)
-     *   UK broad   → FTSE   (^FTSE)
+     * UK opens before US cash — primary lead-lag pair:
+     *   UK Nasdaq → EQQQ (EQQQ.L Invesco Nasdaq-100 UCITS, London hours)
+     *   UK broad  → FTSE (^FTSE)
+     *   US follow → QQQ / SOXL
      */
     'symbols' => [
         [
@@ -67,36 +64,6 @@ return [
             'yahoo_symbol' => 'QQQ',
             'region' => 'us',
             'role' => 'us_nasdaq',
-        ],
-        [
-            'symbol' => 'HSTECH',
-            'name' => 'Hang Seng TECH ETF (Asia ~QQQ)',
-            'yahoo_symbol' => '3067.HK',
-            'region' => 'asia',
-            'timezone' => 'Asia/Hong_Kong',
-            'session_start' => '09:30',
-            'session_end' => '16:00',
-            'role' => 'asia_tech',
-        ],
-        [
-            'symbol' => 'TWII',
-            'name' => 'Taiwan Weighted Index (Asia semis)',
-            'yahoo_symbol' => '^TWII',
-            'region' => 'asia',
-            'timezone' => 'Asia/Taipei',
-            'session_start' => '09:00',
-            'session_end' => '13:30',
-            'role' => 'asia_semis',
-        ],
-        [
-            'symbol' => 'N225',
-            'name' => 'Nikkei 225 (Japan risk-on)',
-            'yahoo_symbol' => '^N225',
-            'region' => 'asia',
-            'timezone' => 'Asia/Tokyo',
-            'session_start' => '09:00',
-            'session_end' => '15:00',
-            'role' => 'asia_japan',
         ],
         [
             'symbol' => 'EQQQ',

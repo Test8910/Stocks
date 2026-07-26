@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Stocks;
 
 /**
- * Asia → UK → US session lead-lag: does the US follow earlier markets?
+ * UK → US session lead-lag: does US cash follow London hours?
  */
 final class GlobalLeadLag
 {
@@ -22,7 +22,6 @@ final class GlobalLeadLag
      */
     public function analyze(
         array $symbolMeta,
-        string $asiaSymbol = 'HSTECH',
         string $ukSymbol = 'EQQQ',
         string $usSymbol = 'QQQ',
         float $thresholdPct = 0.3
@@ -33,12 +32,11 @@ final class GlobalLeadLag
             $bySymbol[strtoupper($m['symbol'])] = $m;
         }
 
-        $asiaSymbol = strtoupper($asiaSymbol);
         $ukSymbol = strtoupper($ukSymbol);
         $usSymbol = strtoupper($usSymbol);
 
         $daily = [];
-        foreach ([$asiaSymbol, $ukSymbol, $usSymbol] as $sym) {
+        foreach ([$ukSymbol, $usSymbol] as $sym) {
             if (!isset($bySymbol[$sym])) {
                 continue;
             }
@@ -46,7 +44,6 @@ final class GlobalLeadLag
         }
 
         $dates = array_values(array_intersect(
-            array_keys($daily[$asiaSymbol] ?? []),
             array_keys($daily[$ukSymbol] ?? []),
             array_keys($daily[$usSymbol] ?? [])
         ));
@@ -54,25 +51,18 @@ final class GlobalLeadLag
 
         $rows = [];
         foreach ($dates as $date) {
-            $a = $daily[$asiaSymbol][$date];
             $u = $daily[$ukSymbol][$date];
             $s = $daily[$usSymbol][$date];
             $rows[] = [
                 'date' => $date,
                 'weekday' => $s['weekday'],
                 'label' => $s['label'],
-                'asia_ret' => $a['ret'],
                 'uk_ret' => $u['ret'],
                 'us_ret' => $s['ret'],
-                'asia_open' => $a['open'],
-                'asia_close' => $a['close'],
                 'uk_open' => $u['open'],
                 'uk_close' => $u['close'],
                 'us_open' => $s['open'],
                 'us_close' => $s['close'],
-                'same_asia_us' => ($a['ret'] == 0.0 || $s['ret'] == 0.0)
-                    ? null
-                    : (($a['ret'] > 0) === ($s['ret'] > 0)),
                 'same_uk_us' => ($u['ret'] == 0.0 || $s['ret'] == 0.0)
                     ? null
                     : (($u['ret'] > 0) === ($s['ret'] > 0)),
@@ -80,65 +70,37 @@ final class GlobalLeadLag
         }
 
         $scenarios = [
-            $this->conditional($rows, 'asia_up', $asiaSymbol, $usSymbol, $thresholdPct, static fn ($r) => $r['asia_ret'] >= $thresholdPct),
-            $this->conditional($rows, 'asia_down', $asiaSymbol, $usSymbol, $thresholdPct, static fn ($r) => $r['asia_ret'] <= -$thresholdPct),
             $this->conditional($rows, 'uk_up', $ukSymbol, $usSymbol, $thresholdPct, static fn ($r) => $r['uk_ret'] >= $thresholdPct),
             $this->conditional($rows, 'uk_down', $ukSymbol, $usSymbol, $thresholdPct, static fn ($r) => $r['uk_ret'] <= -$thresholdPct),
-            $this->conditional(
-                $rows,
-                'asia_and_uk_up',
-                "{$asiaSymbol}+{$ukSymbol}",
-                $usSymbol,
-                $thresholdPct,
-                static fn ($r) => $r['asia_ret'] >= $thresholdPct && $r['uk_ret'] >= $thresholdPct
-            ),
-            $this->conditional(
-                $rows,
-                'asia_and_uk_down',
-                "{$asiaSymbol}+{$ukSymbol}",
-                $usSymbol,
-                $thresholdPct,
-                static fn ($r) => $r['asia_ret'] <= -$thresholdPct && $r['uk_ret'] <= -$thresholdPct
-            ),
         ];
 
-        $agreeAsia = 0;
         $agreeUk = 0;
         $nAgree = 0;
         foreach ($rows as $r) {
-            if ($r['same_asia_us'] === null || $r['same_uk_us'] === null) {
+            if ($r['same_uk_us'] === null) {
                 continue;
             }
             $nAgree++;
-            if ($r['same_asia_us']) {
-                $agreeAsia++;
-            }
             if ($r['same_uk_us']) {
                 $agreeUk++;
             }
         }
 
-        $corrAsia = $this->corr(array_column($rows, 'asia_ret'), array_column($rows, 'us_ret'));
         $corrUk = $this->corr(array_column($rows, 'uk_ret'), array_column($rows, 'us_ret'));
-
         $strength = count($rows) >= 8 ? 'usable' : (count($rows) >= 3 ? 'weak' : 'too_few');
 
         return [
             'ok' => true,
-            'asia_symbol' => $asiaSymbol,
             'uk_symbol' => $ukSymbol,
             'us_symbol' => $usSymbol,
-            'asia_meta' => $bySymbol[$asiaSymbol] ?? null,
             'uk_meta' => $bySymbol[$ukSymbol] ?? null,
             'us_meta' => $bySymbol[$usSymbol] ?? null,
             'threshold_pct' => $thresholdPct,
             'n_days' => count($rows),
             'strength' => $strength,
             'agreement' => [
-                'asia_us_same_dir_pct' => $nAgree > 0 ? round(100 * $agreeAsia / $nAgree, 1) : null,
                 'uk_us_same_dir_pct' => $nAgree > 0 ? round(100 * $agreeUk / $nAgree, 1) : null,
                 'n' => $nAgree,
-                'corr_asia_us' => $corrAsia,
                 'corr_uk_us' => $corrUk,
             ],
             'scenarios' => $scenarios,
@@ -146,17 +108,13 @@ final class GlobalLeadLag
             'summary_text' => $this->summary(
                 count($rows),
                 $strength,
-                $asiaSymbol,
                 $ukSymbol,
                 $usSymbol,
                 $nAgree,
-                $agreeAsia,
                 $agreeUk,
-                $corrAsia,
                 $corrUk
             ),
             'presets' => [
-                'asia' => $this->regionPresets($symbolMeta, 'asia'),
                 'uk' => $this->regionPresets($symbolMeta, 'uk'),
                 'us' => $this->regionPresets($symbolMeta, 'us'),
             ],
@@ -289,24 +247,18 @@ final class GlobalLeadLag
     private function summary(
         int $n,
         string $strength,
-        string $asia,
         string $uk,
         string $us,
         int $nAgree,
-        int $agreeAsia,
         int $agreeUk,
-        ?float $corrAsia,
         ?float $corrUk
     ): string {
         if ($n === 0) {
-            return "No overlapping Asia / UK / US sessions yet. Ingest the new symbols first.";
+            return "No overlapping UK / US sessions yet. Ingest EQQQ (and US symbols) first.";
         }
-        $asiaPct = $nAgree > 0 ? round(100 * $agreeAsia / $nAgree) : 0;
         $ukPct = $nAgree > 0 ? round(100 * $agreeUk / $nAgree) : 0;
-        $ca = $corrAsia !== null ? sprintf('%+.2f', $corrAsia) : 'n/a';
         $cu = $corrUk !== null ? sprintf('%+.2f', $corrUk) : 'n/a';
-        return "On {$n} overlapping days ({$strength}): {$us} same direction as {$asia} {$asiaPct}% of the time, "
-            . "as {$uk} {$ukPct}% (corr Asia/US {$ca}, UK/US {$cu}). "
-            . "Asia & UK open first — use them as a lead check before the US cash open.";
+        return "On {$n} overlapping days ({$strength}): {$us} same direction as {$uk} {$ukPct}% of the time "
+            . "(corr UK/US {$cu}). London hours print first — use as a lead check before the US cash open.";
     }
 }
