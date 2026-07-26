@@ -28,11 +28,10 @@
       <label>
         Move size
         <select id="minDollars">
-          <option value="2">$2+</option>
-          <option value="3">$3+</option>
-          <option value="4">$4+</option>
           <option value="5" selected>$5+</option>
-          <option value="6">$6+</option>
+          <option value="7">$7+</option>
+          <option value="9">$9+</option>
+          <option value="11">$11+</option>
         </select>
       </label>
       <label>
@@ -57,7 +56,7 @@
 
   <section class="section">
     <h2 id="bigMoveTitle">$5 and up moves — when they happen</h2>
-    <p id="bigMoveHint" class="hint">Swings of <strong>$5 or more</strong> (up or down). These are the timings to watch.</p>
+    <p id="bigMoveHint" class="hint">Swings of <strong>$5 or more</strong> (up or down). Use Move size for $5 / $7 / $9 / $11.</p>
     <div id="bigMoveTiming" class="lowhigh"></div>
     <div id="bigMoveList" class="big-move-list"></div>
   </section>

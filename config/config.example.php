@@ -37,8 +37,8 @@ return [
 
     // Significant dollar moves (up or down) — timings you care about
     'big_moves' => [
-        'min_dollars' => 5.0,       // $5 and up
-        'big_dollars' => 5.0,       // highlight $5+
+        'min_dollars' => 5.0,       // default; UI can switch 5/7/9/11
+        'big_dollars' => 5.0,
         'reversal_dollars' => 1.5,  // pullback that ends a swing
         'max_window_minutes' => 90,
     ],

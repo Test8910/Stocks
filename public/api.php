@@ -122,7 +122,7 @@ try {
                 $weekdayAvgs[$wd] = $stats->weekdayAvgPrice($symbol, $wd);
             }
             $bmCfg = $config['big_moves'] ?? [];
-            $allowed = [2.0, 3.0, 4.0, 5.0, 6.0];
+            $allowed = [5.0, 7.0, 9.0, 11.0];
             $requested = isset($_GET['min_dollars']) ? (float) $_GET['min_dollars'] : null;
             $minDollars = in_array($requested, $allowed, true)
                 ? $requested

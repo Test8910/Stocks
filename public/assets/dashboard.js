@@ -21,7 +21,7 @@
     const moveCount = data.big_moves?.moves?.length ?? 0;
     const min$ = bm?.min ?? Number(minDollars);
     $("bigMoveTitle").textContent = `$${min$} and up moves — when they happen`;
-    $("bigMoveHint").innerHTML = `Swings of <strong>$${min$} or more</strong> (up or down). Change “Move size” above to switch between $2–$6.`;
+    $("bigMoveHint").innerHTML = `Swings of <strong>$${min$} or more</strong> (up or down). Change “Move size” above to switch between $5 / $7 / $9 / $11.`;
     $("meta").textContent = `${data.symbol}: ${data.bar_count} bars · ${moveCount} moves ≥$${min$} · ${(data.patterns.threshold * 100).toFixed(0)}% pattern threshold`;
     fillSessionDates();
     renderBigMoves();
