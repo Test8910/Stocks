@@ -154,6 +154,40 @@ button.linkish {
   font: inherit;
 }
 
+.big-move-list { margin-top: 1rem; }
+.table-wrap {
+  overflow-x: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.moves-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.moves-table th, .moves-table td {
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+.moves-table th { color: var(--muted); font-weight: 500; }
+.badge {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.78rem;
+}
+.badge.over3 { background: #3a2418; color: #f0c674; border: 1px solid #6a4a28; }
+.badge.mid { background: #1c2e38; color: #9aabbc; border: 1px solid #2a3644; }
+.session-moves {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+}
+.session-moves li { margin: 0.2rem 0; }
+
 .patterns {
   display: grid;
   gap: 0.75rem;

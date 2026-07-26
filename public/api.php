@@ -7,6 +7,7 @@ header('Access-Control-Allow-Origin: *');
 
 $config = require dirname(__DIR__) . '/src/bootstrap.php';
 
+use Stocks\BigMoveDetector;
 use Stocks\Database;
 use Stocks\PatternEngine;
 use Stocks\PriceRepository;
@@ -120,6 +121,15 @@ try {
             for ($wd = 1; $wd <= 5; $wd++) {
                 $weekdayAvgs[$wd] = $stats->weekdayAvgPrice($symbol, $wd);
             }
+            $bmCfg = $config['big_moves'] ?? [];
+            $bigMoves = (new BigMoveDetector(
+                $session,
+                (float) ($bmCfg['min_dollars'] ?? 2.0),
+                (float) ($bmCfg['big_dollars'] ?? 3.0),
+                (float) ($bmCfg['reversal_dollars'] ?? 1.0),
+                (int) ($bmCfg['max_window_minutes'] ?? 90)
+            ))->analyze($paths);
+
             echo json_encode([
                 'ok' => true,
                 'symbol' => $symbol,
@@ -136,6 +146,7 @@ try {
                 'weekdays' => $analysis['weekdays'],
                 'sessions' => $paths,
                 'weekday_avg_price' => $weekdayAvgs,
+                'big_moves' => $bigMoves,
             ]);
             break;
         }

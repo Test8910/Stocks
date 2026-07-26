@@ -35,6 +35,14 @@ return [
         'min_window_minutes' => 3,
     ],
 
+    // Significant dollar moves (up or down) — timings you care about
+    'big_moves' => [
+        'min_dollars' => 2.0,       // at least $2
+        'big_dollars' => 3.0,       // highlight more than $3
+        'reversal_dollars' => 1.0,  // $1 pullback ends a swing
+        'max_window_minutes' => 90,
+    ],
+
     'symbols' => [
         [
             'symbol' => 'SOXL',

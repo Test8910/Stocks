@@ -14,13 +14,83 @@
       return;
     }
     summary = data;
-    $("meta").textContent = `${data.symbol}: ${data.bar_count} RTH bars across ${data.session_count} sessions · threshold ${(data.patterns.threshold * 100).toFixed(0)}%`;
+    const bm = data.big_moves?.thresholds;
+    const moveCount = data.big_moves?.moves?.length ?? 0;
+    const over3 = (data.big_moves?.moves || []).filter((m) => m.bucket === "over_3").length;
+    $("meta").textContent = `${data.symbol}: ${data.bar_count} bars · ${moveCount} moves ≥$${bm?.min ?? 2} (${over3} over $${bm?.big ?? 3}) · ${(data.patterns.threshold * 100).toFixed(0)}% pattern threshold`;
     fillSessionDates();
+    renderBigMoves();
     renderSessionPrice();
     renderAvgPrice();
     renderLowHigh();
     renderPatterns();
     renderHeat();
+  }
+
+  function renderBigMoves() {
+    const timing = $("bigMoveTiming");
+    const list = $("bigMoveList");
+    const bm = summary.big_moves;
+    if (!bm) {
+      timing.innerHTML = "";
+      list.innerHTML = "<p class='hint'>No big-move data.</p>";
+      return;
+    }
+
+    timing.innerHTML = "";
+    (bm.timing_summary || []).forEach((d) => {
+      const el = document.createElement("div");
+      el.className = "lh-card";
+      el.innerHTML = `
+        <h3>${d.label}</h3>
+        <p><strong>${d.count}</strong> moves ≥$${bm.thresholds.min}</p>
+        <p class="up">Up: ${d.up_count} · typical start <strong>${d.typical_up_start ?? "—"}</strong></p>
+        <p class="down">Down: ${d.down_count} · typical start <strong>${d.typical_down_start ?? "—"}</strong></p>
+        <p class="high">&gt;$${bm.thresholds.big}: ${d.over_3_count} · typical start <strong>${d.typical_over_3_start ?? "—"}</strong></p>
+      `;
+      timing.appendChild(el);
+    });
+
+    const moves = bm.moves || [];
+    if (!moves.length) {
+      list.innerHTML = `<p class="hint">No ≥$${bm.thresholds.min} swings found in the loaded history.</p>`;
+      return;
+    }
+
+    const rows = moves.map((m) => {
+      const cls = m.direction === "up" ? "up" : "down";
+      const badge = m.bucket === "over_3" ? `<span class="badge over3">&gt;$3</span>` : `<span class="badge mid">$2–$3</span>`;
+      const sign = m.direction === "up" ? "+" : "−";
+      return `<tr class="${cls}">
+        <td><button type="button" class="linkish" data-date="${m.date}">${m.date}</button></td>
+        <td>${m.label}</td>
+        <td>${badge}</td>
+        <td class="${cls}">${m.direction.toUpperCase()} ${sign}$${m.dollars.toFixed(2)}</td>
+        <td><strong>${m.start_time}</strong> → ${m.end_time}</td>
+        <td>$${m.start_price.toFixed(2)} → $${m.end_price.toFixed(2)}</td>
+        <td>${m.duration_minutes}m</td>
+      </tr>`;
+    }).join("");
+
+    list.innerHTML = `
+      <div class="table-wrap">
+        <table class="moves-table">
+          <thead>
+            <tr>
+              <th>Date</th><th>Day</th><th>Size</th><th>Move</th><th>Time</th><th>Price</th><th>Dur</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+    list.querySelectorAll("button[data-date]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        $("sessionDate").value = btn.getAttribute("data-date");
+        renderSessionPrice();
+        window.scrollTo({ top: $("pathSummary").offsetTop - 20, behavior: "smooth" });
+      });
+    });
   }
 
   function fillSessionDates() {
@@ -51,6 +121,16 @@
       return;
     }
 
+    const dayMoves = (summary.big_moves?.moves || []).filter((m) => m.date === s.date);
+    const moveLines = dayMoves.length
+      ? `<ul class="session-moves">${dayMoves.map((m) => {
+          const cls = m.direction === "up" ? "up" : "down";
+          const tag = m.bucket === "over_3" ? "&gt;$3" : "$2–$3";
+          const sign = m.direction === "up" ? "+" : "−";
+          return `<li class="${cls}"><strong>${tag}</strong> ${m.direction} ${sign}$${m.dollars.toFixed(2)} · <strong>${m.start_time}→${m.end_time}</strong> ($${m.start_price.toFixed(2)}→$${m.end_price.toFixed(2)})</li>`;
+        }).join("")}</ul>`
+      : `<p class="hint">No ≥$2 swings on this session.</p>`;
+
     const lowToHigh = s.high_after_low
       ? `<span class="up">Low → High in ${s.minutes_low_to_high} min (+${s.move_pct}%)</span>`
       : `<span class="down">High printed before low (down-day shape) · range ${s.move_pct ?? "—"}%</span>`;
@@ -61,6 +141,8 @@
         <p class="low">Lower price: <strong>$${s.low_price}</strong> at <strong>${s.low_time}</strong></p>
         <p class="high">Higher price: <strong>$${s.high_price}</strong> at <strong>${s.high_time}</strong></p>
         <p>${lowToHigh}</p>
+        <p><strong>$2 / &gt;$3 moves this day</strong></p>
+        ${moveLines}
       </div>
     `;
 
@@ -69,12 +151,31 @@
     const lowIdx = s.points.findIndex((p) => p.time === s.low_time && p.price === s.low_price);
     const highIdx = s.points.findIndex((p) => p.time === s.high_time && p.price === s.high_price);
 
-    // Segment: emphasize low → high stretch
     const segment = prices.map((p, i) => {
       if (!s.high_after_low) return null;
       const lo = Math.min(lowIdx, highIdx);
       const hi = Math.max(lowIdx, highIdx);
       return i >= lo && i <= hi ? p : null;
+    });
+
+    // Overlay each big move stretch on the chart
+    const moveDatasets = dayMoves.map((m) => {
+      const isUp = m.direction === "up";
+      const isBig = m.bucket === "over_3";
+      const data = s.points.map((p) => {
+        const t = p.minute_of_day;
+        return t >= m.start_minute && t <= m.end_minute ? p.price : null;
+      });
+      return {
+        label: `${isBig ? ">$3" : "$2–$3"} ${m.direction} ${m.start_time}`,
+        data,
+        borderColor: isUp ? (isBig ? "#2ee6a0" : "#3dbb8b") : (isBig ? "#ff6b76" : "#e06c75"),
+        borderWidth: isBig ? 3 : 2,
+        pointRadius: 0,
+        tension: 0.05,
+        spanGaps: false,
+        fill: false,
+      };
     });
 
     const ctx = $("priceChart").getContext("2d");
@@ -97,14 +198,15 @@
           {
             label: "Low → High",
             data: segment,
-            borderColor: "#3dbb8b",
-            backgroundColor: "rgba(61,187,139,0.15)",
+            borderColor: "#c9a45c",
+            backgroundColor: "rgba(240,198,116,0.12)",
             fill: true,
             pointRadius: 0,
-            borderWidth: 2.5,
+            borderWidth: 1.5,
             tension: 0.05,
             spanGaps: false,
           },
+          ...moveDatasets,
           {
             label: "Low",
             data: prices.map((p, i) => (i === lowIdx ? p : null)),

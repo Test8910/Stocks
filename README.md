@@ -1,7 +1,9 @@
 # Stocks — SOXL & QQQ intraday patterns
 
 Learn **Monday–Friday** time-of-day patterns for **SOXL** and **QQQ**:
-when price tends to be **low**, when it tends to be **high**, and which minutes historically trend up/down (≥ 60%).
+when price tends to be **low**, when it tends to be **high**,
+when **$2–$3** and **>$3** swings happen (up or down),
+and which minutes historically trend up/down (≥ 60%).
 
 ## Quick start
 
