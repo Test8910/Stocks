@@ -136,6 +136,36 @@
   </section>
 
   <section class="section">
+    <h2>US earnings (EPS vs estimate)</h2>
+    <p class="hint">Last ~2 weeks reported + next ~2 weeks upcoming from Nasdaq calendar. Surprise % = (actual − estimate) / |estimate|. Major = large-cap or QQQ/semis watchlist.</p>
+    <div class="controls compare-controls">
+      <label>
+        Filter
+        <select id="earnFilter">
+          <option value="major" selected>Major / watchlist</option>
+          <option value="watchlist">QQQ &amp; semis watchlist</option>
+          <option value="all">All US (busy)</option>
+        </select>
+      </label>
+      <label>
+        Min market cap
+        <select id="earnMinCap">
+          <option value="10">$10B+</option>
+          <option value="20" selected>$20B+</option>
+          <option value="50">$50B+</option>
+        </select>
+      </label>
+      <button type="button" id="runEarnings">Load earnings</button>
+    </div>
+    <p id="earnSummary" class="hint"></p>
+    <div id="earnStats" class="compare-grid"></div>
+    <h3 class="subhead">Upcoming</h3>
+    <div id="earnUpcoming" class="big-move-list"></div>
+    <h3 class="subhead">Last 2 weeks (reported)</h3>
+    <div id="earnPast" class="big-move-list"></div>
+  </section>
+
+  <section class="section">
     <h2>Mon–Fri session % (SOXL &amp; QQQ)</h2>
     <p class="hint">Open→close % for each weekday session. Summary shows how often each weekday finished up, plus every day side-by-side.</p>
     <button type="button" id="runWeekdayReturns">Refresh</button>

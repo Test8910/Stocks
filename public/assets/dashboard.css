@@ -249,8 +249,16 @@ button.linkish {
   padding: 0.55rem 0.65rem;
   border-bottom: 1px solid var(--line);
 }
-.check-pass { color: var(--accent); font-weight: 600; }
-.check-fail { color: var(--down); font-weight: 600; }
+.subhead {
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 1.1rem;
+  margin: 1.25rem 0 0.5rem;
+  color: var(--text);
+}
+.earn-beat { color: var(--accent); }
+.earn-miss { color: var(--down); }
+.earn-pending { color: var(--muted); }
 .check-action {
   font-size: 1.35rem;
   font-weight: 600;

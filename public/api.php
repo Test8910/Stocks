@@ -9,6 +9,7 @@ $config = require dirname(__DIR__) . '/src/bootstrap.php';
 
 use Stocks\BigMoveDetector;
 use Stocks\Database;
+use Stocks\EarningsClient;
 use Stocks\GlobalLeadLag;
 use Stocks\LiveBiasService;
 use Stocks\PatternEngine;
@@ -345,6 +346,29 @@ try {
 
         case 'weekday_returns': {
             $result = (new WeekdayReturns($stats))->build(['SOXL', 'QQQ']);
+            echo json_encode($result);
+            break;
+        }
+
+        case 'earnings': {
+            $filter = (string) ($_GET['filter'] ?? 'major');
+            if (!in_array($filter, ['major', 'watchlist', 'all'], true)) {
+                $filter = 'major';
+            }
+            $pastDays = isset($_GET['past_days']) ? (int) $_GET['past_days'] : 14;
+            $futureDays = isset($_GET['future_days']) ? (int) $_GET['future_days'] : 14;
+            $pastDays = max(7, min(21, $pastDays));
+            $futureDays = max(7, min(21, $futureDays));
+            $minCap = isset($_GET['min_cap_b']) ? (int) $_GET['min_cap_b'] : 20;
+            if (!in_array($minCap, [5, 10, 20, 50], true)) {
+                $minCap = 20;
+            }
+            $cacheDir = dirname(__DIR__) . '/storage/earnings_cache';
+            $client = new EarningsClient(
+                requestDelayMs: 80,
+                cacheDir: $cacheDir
+            );
+            $result = $client->calendar($pastDays, $futureDays, $filter, $minCap);
             echo json_encode($result);
             break;
         }

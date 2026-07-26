@@ -66,6 +66,93 @@
     try { loadRsi(); } catch (e) { console.error(e); }
     try { loadChecklist(); } catch (e) { console.error(e); }
     try { loadWeekdayReturns(); } catch (e) { console.error(e); }
+    try { loadEarnings(); } catch (e) { console.error(e); }
+  }
+
+  async function loadEarnings() {
+    const filter = $("earnFilter")?.value || "major";
+    const minCap = $("earnMinCap")?.value || "20";
+    if ($("earnSummary")) $("earnSummary").textContent = "Loading US earnings calendar…";
+    const url = `api.php?action=earnings&filter=${encodeURIComponent(filter)}&min_cap_b=${encodeURIComponent(minCap)}&past_days=14&future_days=14`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!data.ok) {
+        if ($("earnSummary")) $("earnSummary").textContent = data.error || "Earnings failed";
+        return;
+      }
+      renderEarnings(data);
+    } catch (e) {
+      if ($("earnSummary")) $("earnSummary").textContent = "Earnings error: " + e.message;
+    }
+  }
+
+  function renderEarnings(d) {
+    if (!d || !$("earnSummary")) return;
+    $("earnSummary").textContent = d.summary_text || "";
+    const st = d.stats || {};
+    $("earnStats").innerHTML = `
+      <div class="path-card">
+        <h3>Range</h3>
+        <p>${d.range?.from || "—"} → ${d.range?.to || "—"}</p>
+        <p>Filter: <strong>${d.filter}</strong></p>
+      </div>
+      <div class="path-card">
+        <h3>Last 2 weeks</h3>
+        <p>Reports: <strong>${st.past_reports ?? 0}</strong></p>
+        <p class="up">Beats: <strong>${st.beats ?? 0}</strong></p>
+        <p class="down">Misses: <strong>${st.misses ?? 0}</strong></p>
+        <p>Beat rate: <strong>${st.beat_pct ?? "—"}%</strong></p>
+      </div>
+      <div class="path-card">
+        <h3>Upcoming</h3>
+        <p>Reports: <strong>${st.upcoming_reports ?? 0}</strong></p>
+        <p class="hint">Includes estimate &amp; last-year EPS when available</p>
+      </div>
+    `;
+
+    const fmtEps = (v) => v == null ? "—" : (v >= 0 ? "$" : "-$") + Math.abs(v).toFixed(2);
+    const fmtSurp = (v, result) => {
+      if (v == null) return "—";
+      const cls = result === "beat" ? "earn-beat" : (result === "miss" ? "earn-miss" : "");
+      return `<span class="${cls}">${v >= 0 ? "+" : ""}${v}%</span>`;
+    };
+    const resultLabel = (r) => {
+      if (r === "beat") return '<span class="earn-beat">Beat</span>';
+      if (r === "miss") return '<span class="earn-miss">Miss</span>';
+      if (r === "inline") return "Inline";
+      if (r === "reported") return "Reported";
+      return '<span class="earn-pending">Pending</span>';
+    };
+
+    const dayTables = (blocks, mode) => {
+      if (!blocks || !blocks.length) return "<p class='hint'>None in range for this filter.</p>";
+      return blocks.map((b) => {
+        if (!(b.rows || []).length) return "";
+        const rows = b.rows.map((r) => {
+          const watch = r.watchlist ? " ★" : "";
+          return `<tr>
+            <td><strong>${r.symbol}</strong>${watch}<div class="hint">${r.name}</div></td>
+            <td>${r.time}</td>
+            <td>${fmtEps(r.eps_estimate)}</td>
+            <td>${mode === "past" ? fmtEps(r.eps) : fmtEps(r.last_year_eps)}</td>
+            <td>${mode === "past" ? fmtSurp(r.surprise_pct, r.result) : (r.last_year_date || "—")}</td>
+            <td>${mode === "past" ? resultLabel(r.result) : (r.fiscal_quarter || "—")}</td>
+            <td>${r.market_cap_label || "—"}</td>
+          </tr>`;
+        }).join("");
+        const head = mode === "past"
+          ? "<th>Company</th><th>When</th><th>Est. EPS</th><th>Actual EPS</th><th>Surprise</th><th>Result</th><th>Mkt cap</th>"
+          : "<th>Company</th><th>When</th><th>Est. EPS</th><th>Last year EPS</th><th>Last year date</th><th>Quarter</th><th>Mkt cap</th>";
+        return `<div class="table-wrap" style="margin-bottom:1rem">
+          <h4 style="margin:0 0 0.4rem">${fmtDate(b.date)} · ${b.label || ""} · ${b.count} names</h4>
+          <table class="moves-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>
+        </div>`;
+      }).join("") || "<p class='hint'>None in range for this filter.</p>";
+    };
+
+    $("earnUpcoming").innerHTML = dayTables(d.upcoming, "upcoming");
+    $("earnPast").innerHTML = dayTables(d.past, "past");
   }
 
   async function loadWeekdayReturns() {
@@ -1237,6 +1324,11 @@
   }, checklistRefreshSec * 1000);
 
   $("runWeekdayReturns")?.addEventListener("click", loadWeekdayReturns);
+
+  $("runEarnings")?.addEventListener("click", loadEarnings);
+  ["earnFilter", "earnMinCap"].forEach((id) => {
+    $(id)?.addEventListener("change", loadEarnings);
+  });
 
   $("reload").addEventListener("click", load);
   $("symbol").addEventListener("change", load);
