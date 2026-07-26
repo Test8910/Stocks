@@ -154,6 +154,15 @@
         </select>
       </label>
       <label>
+        Rows
+        <select id="earnLimit">
+          <option value="20" selected>20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="all">All</option>
+        </select>
+      </label>
+      <label>
         Filter
         <select id="earnFilter">
           <option value="major" selected>Major / watchlist</option>
@@ -173,6 +182,9 @@
     </div>
     <p id="earnSummary" class="hint"></p>
     <div id="earnTable" class="big-move-list"></div>
+    <div class="controls compare-controls" style="margin-top:0.75rem">
+      <button type="button" id="earnShowMore" hidden>Show more (+20)</button>
+    </div>
   </section>
 
   <section class="section">

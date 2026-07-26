@@ -70,10 +70,12 @@
   }
 
   let earningsData = null;
+  let earnVisible = 20;
 
   async function loadEarnings() {
     const filter = $("earnFilter")?.value || "major";
     const minCap = $("earnMinCap")?.value || "20";
+    earnVisible = parseEarnLimit();
     if ($("earnSummary")) $("earnSummary").textContent = "Loading US earnings…";
     const url = `api.php?action=earnings&filter=${encodeURIComponent(filter)}&min_cap_b=${encodeURIComponent(minCap)}&past_days=14&future_days=14`;
     try {
@@ -89,6 +91,25 @@
     } catch (e) {
       if ($("earnSummary")) $("earnSummary").textContent = "Earnings error: " + e.message;
     }
+  }
+
+  function parseEarnLimit() {
+    const v = $("earnLimit")?.value || "20";
+    if (v === "all") return Infinity;
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) && n > 0 ? n : 20;
+  }
+
+  function filteredEarningsRows() {
+    const d = earningsData;
+    if (!d) return [];
+    const dateFilter = $("earnDate")?.value || "all";
+    const scope = $("earnScope")?.value || "all";
+    let rows = flattenEarnings(d);
+    if (dateFilter !== "all") rows = rows.filter((r) => r.date === dateFilter);
+    if (scope === "upcoming") rows = rows.filter((r) => r.status !== "past");
+    if (scope === "past") rows = rows.filter((r) => r.status === "past");
+    return rows;
   }
 
   function flattenEarnings(d) {
@@ -135,17 +156,33 @@
   function renderEarnings() {
     const d = earningsData;
     if (!d || !$("earnSummary")) return;
-    const dateFilter = $("earnDate")?.value || "all";
-    const scope = $("earnScope")?.value || "all";
-    let rows = flattenEarnings(d);
-    if (dateFilter !== "all") rows = rows.filter((r) => r.date === dateFilter);
-    if (scope === "upcoming") rows = rows.filter((r) => r.status !== "past");
-    if (scope === "past") rows = rows.filter((r) => r.status === "past");
+    const allRows = filteredEarningsRows();
+    const limitSel = parseEarnLimit();
+    if (limitSel !== Infinity) {
+      // keep earnVisible in sync with dropdown when user picks 20/50/100
+      if (earnVisible === Infinity || earnVisible < limitSel) earnVisible = limitSel;
+      if ($("earnLimit")?.value !== "all" && earnVisible > limitSel && ![50, 100].includes(earnVisible)) {
+        // after Show more, visible can exceed dropdown; that's ok
+      }
+    } else {
+      earnVisible = Infinity;
+    }
+
+    const visibleCount = earnVisible === Infinity ? allRows.length : Math.min(earnVisible, allRows.length);
+    const rows = allRows.slice(0, visibleCount);
 
     const st = d.stats || {};
     $("earnSummary").textContent =
-      `${rows.length} rows shown · ${d.summary_text || ""}` +
-      (st.beat_pct != null ? ` · Beat rate (past): ${st.beat_pct}%` : "");
+      `Showing ${rows.length} of ${allRows.length}` +
+      (st.beat_pct != null ? ` · Beat rate (past): ${st.beat_pct}%` : "") +
+      (d.summary_text ? ` · ${d.summary_text}` : "");
+
+    const moreBtn = $("earnShowMore");
+    if (moreBtn) {
+      const canMore = visibleCount < allRows.length;
+      moreBtn.hidden = !canMore;
+      moreBtn.textContent = `Show more (+20) · ${allRows.length - visibleCount} left`;
+    }
 
     const fmtEps = (v) => {
       if (v == null) return "—";
@@ -1381,8 +1418,18 @@
   });
   ["earnDate", "earnScope"].forEach((id) => {
     $(id)?.addEventListener("change", () => {
+      earnVisible = parseEarnLimit();
       if (earningsData) renderEarnings();
     });
+  });
+  $("earnLimit")?.addEventListener("change", () => {
+    earnVisible = parseEarnLimit();
+    if (earningsData) renderEarnings();
+  });
+  $("earnShowMore")?.addEventListener("click", () => {
+    if (earnVisible === Infinity) return;
+    earnVisible += 20;
+    if (earningsData) renderEarnings();
   });
 
   $("reload").addEventListener("click", load);
