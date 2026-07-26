@@ -9,11 +9,13 @@ $config = require dirname(__DIR__) . '/src/bootstrap.php';
 
 use Stocks\BigMoveDetector;
 use Stocks\Database;
+use Stocks\GlobalLeadLag;
 use Stocks\PatternEngine;
 use Stocks\PriceRepository;
 use Stocks\ScenarioAnalyzer;
 use Stocks\SessionFilter;
 use Stocks\StatsService;
+use Stocks\SymbolSessions;
 use Stocks\WeekCompare;
 
 try {
@@ -200,18 +202,48 @@ try {
 
     switch ($action) {
         case 'symbols':
+            $meta = [];
+            foreach (SymbolSessions::all($config) as $m) {
+                $meta[$m['symbol']] = $m;
+            }
             $rows = $repo->activeSymbols();
             $out = [];
             foreach ($rows as $r) {
+                $m = $meta[$r['symbol']] ?? null;
                 $out[] = [
                     'symbol' => $r['symbol'],
                     'name' => $r['name'],
+                    'region' => $m['region'] ?? 'us',
+                    'role' => $m['role'] ?? 'other',
                     'bars' => $repo->countBars($r['symbol']),
                     'latest' => $repo->latestTs($r['symbol']),
                 ];
             }
             echo json_encode(['ok' => true, 'symbols' => $out], JSON_PRETTY_PRINT);
             break;
+
+        case 'global_lead': {
+            $asia = strtoupper((string) ($_GET['asia'] ?? 'HSTECH'));
+            $uk = strtoupper((string) ($_GET['uk'] ?? 'EQQQ'));
+            $us = strtoupper((string) ($_GET['us'] ?? 'QQQ'));
+            $threshold = isset($_GET['threshold_pct']) ? (float) $_GET['threshold_pct'] : 0.3;
+            $allowed = [0.2, 0.3, 0.5, 1.0];
+            $okT = false;
+            foreach ($allowed as $t) {
+                if (abs($threshold - $t) < 0.001) {
+                    $threshold = $t;
+                    $okT = true;
+                    break;
+                }
+            }
+            if (!$okT) {
+                $threshold = 0.3;
+            }
+            $meta = SymbolSessions::all($config);
+            $result = (new GlobalLeadLag($stats))->analyze($meta, $asia, $uk, $us, $threshold);
+            echo json_encode($result);
+            break;
+        }
 
         case 'series': {
             $summary = $buildSummary();

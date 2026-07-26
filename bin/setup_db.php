@@ -37,4 +37,5 @@ if ($driver === 'sqlite') {
 $repo = new PriceRepository($pdo);
 $repo->seedSymbols($config['symbols']);
 
-echo "Database ready ({$driver}). Symbols: SOXL, QQQ\n";
+$names = array_column($config['symbols'] ?? [], 'symbol');
+echo "Database ready ({$driver}). Symbols: " . implode(', ', $names) . "\n";

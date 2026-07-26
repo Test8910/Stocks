@@ -6,7 +6,7 @@ $config = require dirname(__DIR__) . '/src/bootstrap.php';
 
 use Stocks\Database;
 use Stocks\PriceRepository;
-use Stocks\SessionFilter;
+use Stocks\SymbolSessions;
 use Stocks\YahooFinanceClient;
 
 $only = null;
@@ -18,21 +18,18 @@ foreach ($argv as $arg) {
 
 $pdo = Database::pdo($config);
 $repo = new PriceRepository($pdo);
-$session = new SessionFilter(
-    $config['timezone'] ?? 'America/New_York',
-    $config['session_start'] ?? '09:30',
-    $config['session_end'] ?? '16:00'
-);
 $yahoo = new YahooFinanceClient(
     requestDelayMs: (int) ($config['request_delay_ms'] ?? 350)
 );
 
 $days = (int) ($config['history_calendar_days'] ?? 14);
-$symbols = $repo->activeSymbols();
+$symbols = SymbolSessions::all($config);
 if ($symbols === []) {
-    fwrite(STDERR, "No symbols. Run: php bin/setup_db.php\n");
+    fwrite(STDERR, "No symbols in config. Check config.php\n");
     exit(1);
 }
+
+$repo->seedSymbols($symbols);
 
 foreach ($symbols as $row) {
     $symbol = $row['symbol'];
@@ -40,11 +37,16 @@ foreach ($symbols as $row) {
         continue;
     }
 
-    echo "Fetching 1m history for {$symbol} ({$days}d chunks)...\n";
-    $raw = $yahoo->fetchOneMinute($row['yahoo_symbol'], $days);
-    $bars = $session->filter($raw);
-    $n = $repo->upsertBars($symbol, $bars);
-    echo "  raw=" . count($raw) . " rth=" . count($bars) . " upserted={$n} total=" . $repo->countBars($symbol) . "\n";
+    $session = SymbolSessions::filterFor($row);
+    echo "Fetching 1m history for {$symbol} [{$row['region']}] ({$row['yahoo_symbol']}, {$days}d)...\n";
+    try {
+        $raw = $yahoo->fetchOneMinute($row['yahoo_symbol'], $days);
+        $bars = $session->filter($raw);
+        $n = $repo->upsertBars($symbol, $bars);
+        echo "  raw=" . count($raw) . " session=" . count($bars) . " upserted={$n} total=" . $repo->countBars($symbol) . "\n";
+    } catch (Throwable $e) {
+        fwrite(STDERR, "  ERROR: {$e->getMessage()}\n");
+    }
 
     usleep(((int) ($config['request_delay_ms'] ?? 350)) * 1000);
 }

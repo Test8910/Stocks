@@ -19,6 +19,7 @@ return [
         'charset' => 'utf8mb4',
     ],
 
+    // Default US session (used when a symbol omits its own session)
     'timezone' => 'America/New_York',
     'session_start' => '09:30',
     'session_end' => '16:00',
@@ -43,16 +44,79 @@ return [
         'max_window_minutes' => 90,
     ],
 
+    /*
+     * Symbols by region. Asia & UK open before US cash — use for lead-lag.
+     * QQQ analogues:
+     *   Asia tech  → HSTECH (3067.HK Hang Seng TECH ETF)
+     *   Asia semis → TWII   (^TWII Taiwan — close to Nasdaq/SOXL theme)
+     *   Japan risk → N225   (^N225)
+     *   UK Nasdaq  → EQQQ   (EQQQ.L Invesco Nasdaq-100 UCITS, London hours)
+     *   UK broad   → FTSE   (^FTSE)
+     */
     'symbols' => [
         [
             'symbol' => 'SOXL',
             'name' => 'Direxion Daily Semiconductor Bull 3X',
             'yahoo_symbol' => 'SOXL',
+            'region' => 'us',
+            'role' => 'us_semis',
         ],
         [
             'symbol' => 'QQQ',
-            'name' => 'Invesco QQQ Trust',
+            'name' => 'Invesco QQQ Trust (Nasdaq-100)',
             'yahoo_symbol' => 'QQQ',
+            'region' => 'us',
+            'role' => 'us_nasdaq',
+        ],
+        [
+            'symbol' => 'HSTECH',
+            'name' => 'Hang Seng TECH ETF (Asia ~QQQ)',
+            'yahoo_symbol' => '3067.HK',
+            'region' => 'asia',
+            'timezone' => 'Asia/Hong_Kong',
+            'session_start' => '09:30',
+            'session_end' => '16:00',
+            'role' => 'asia_tech',
+        ],
+        [
+            'symbol' => 'TWII',
+            'name' => 'Taiwan Weighted Index (Asia semis)',
+            'yahoo_symbol' => '^TWII',
+            'region' => 'asia',
+            'timezone' => 'Asia/Taipei',
+            'session_start' => '09:00',
+            'session_end' => '13:30',
+            'role' => 'asia_semis',
+        ],
+        [
+            'symbol' => 'N225',
+            'name' => 'Nikkei 225 (Japan risk-on)',
+            'yahoo_symbol' => '^N225',
+            'region' => 'asia',
+            'timezone' => 'Asia/Tokyo',
+            'session_start' => '09:00',
+            'session_end' => '15:00',
+            'role' => 'asia_japan',
+        ],
+        [
+            'symbol' => 'EQQQ',
+            'name' => 'Invesco EQQQ Nasdaq-100 UCITS (UK hours)',
+            'yahoo_symbol' => 'EQQQ.L',
+            'region' => 'uk',
+            'timezone' => 'Europe/London',
+            'session_start' => '08:00',
+            'session_end' => '16:30',
+            'role' => 'uk_nasdaq',
+        ],
+        [
+            'symbol' => 'FTSE',
+            'name' => 'FTSE 100 (UK market)',
+            'yahoo_symbol' => '^FTSE',
+            'region' => 'uk',
+            'timezone' => 'Europe/London',
+            'session_start' => '08:00',
+            'session_end' => '16:30',
+            'role' => 'uk_broad',
         ],
     ],
 ];

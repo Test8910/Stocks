@@ -14,8 +14,8 @@
   <header class="top">
     <div>
       <p class="brand">Stocks</p>
-      <h1>Price, low, then high — SOXL &amp; QQQ</h1>
-      <p class="sub">See price with time, dollar-move timings (up or down), and low → high paths (Mon–Fri, 09:30–16:00 ET)</p>
+      <h1>Price, low, then high — US, UK &amp; Asia</h1>
+      <p class="sub">US intraday patterns plus Asia → UK → US lead-lag (markets that open first)</p>
     </div>
     <div class="controls">
       <label>
@@ -62,6 +62,49 @@
   </header>
 
   <p id="meta" class="meta">Loading…</p>
+
+  <section class="section">
+    <h2>Asia → UK → US lead-lag</h2>
+    <p class="hint" id="globalHint">Asia and UK open before US cash. Pick QQQ-like proxies and see whether the US session usually follows the same direction.</p>
+    <div class="controls compare-controls">
+      <label>
+        Asia (opens first)
+        <select id="globalAsia">
+          <option value="HSTECH" selected>HSTECH — Hang Seng TECH (~QQQ Asia)</option>
+          <option value="TWII">TWII — Taiwan (semis)</option>
+          <option value="N225">N225 — Nikkei 225</option>
+        </select>
+      </label>
+      <label>
+        UK / Europe
+        <select id="globalUk">
+          <option value="EQQQ" selected>EQQQ.L — Nasdaq-100 (London hours)</option>
+          <option value="FTSE">FTSE — FTSE 100</option>
+        </select>
+      </label>
+      <label>
+        US follow
+        <select id="globalUs">
+          <option value="QQQ" selected>QQQ</option>
+          <option value="SOXL">SOXL</option>
+        </select>
+      </label>
+      <label>
+        Lead threshold
+        <select id="globalThreshold">
+          <option value="0.2">0.2%</option>
+          <option value="0.3" selected>0.3%</option>
+          <option value="0.5">0.5%</option>
+          <option value="1">1%</option>
+        </select>
+      </label>
+      <button type="button" id="runGlobal">Compare</button>
+    </div>
+    <p id="globalSummaryText" class="hint"></p>
+    <div id="globalCards" class="compare-grid"></div>
+    <div id="globalScenarios" class="compare-grid"></div>
+    <div id="globalDays" class="big-move-list"></div>
+  </section>
 
   <section class="section">
     <h2>Scenario explorer</h2>

@@ -7,6 +7,7 @@
   let comparePriceChart = null;
   let scenarioPathChart = null;
   let scenarioData = null;
+  let globalData = null;
 
   function fmtDate(iso) {
     if (!iso) return "—";
@@ -56,6 +57,96 @@
     try { renderPatterns(); } catch (e) { console.error(e); }
     try { renderHeat(); } catch (e) { console.error(e); }
     try { loadScenario(); } catch (e) { console.error(e); }
+    try { loadGlobalLead(); } catch (e) { console.error(e); }
+  }
+
+  async function loadGlobalLead() {
+    const asia = $("globalAsia")?.value || "HSTECH";
+    const uk = $("globalUk")?.value || "EQQQ";
+    const us = $("globalUs")?.value || "QQQ";
+    const threshold = $("globalThreshold")?.value || "0.3";
+    if ($("globalSummaryText")) $("globalSummaryText").textContent = "Comparing Asia → UK → US…";
+    const url = `api.php?action=global_lead&asia=${encodeURIComponent(asia)}&uk=${encodeURIComponent(uk)}&us=${encodeURIComponent(us)}&threshold_pct=${encodeURIComponent(threshold)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data.ok && data.n_days == null) {
+      if ($("globalSummaryText")) $("globalSummaryText").textContent = data.error || "Global compare failed";
+      return;
+    }
+    globalData = data;
+    renderGlobalLead();
+  }
+
+  function renderGlobalLead() {
+    const g = globalData;
+    if (!g || !$("globalSummaryText")) return;
+    $("globalSummaryText").textContent = g.summary_text || "";
+    const agr = g.agreement || {};
+    const strengthClass = g.strength === "usable" ? "up" : (g.strength === "weak" ? "high" : "down");
+
+    $("globalCards").innerHTML = `
+      <div class="path-card">
+        <h3>Overlap</h3>
+        <p><strong>${g.asia_symbol}</strong> → <strong>${g.uk_symbol}</strong> → <strong>${g.us_symbol}</strong></p>
+        <p>Days: <strong>${g.n_days}</strong> · <span class="${strengthClass}">${g.strength}</span></p>
+        <p>Lead move ≥ <strong>${g.threshold_pct}%</strong></p>
+      </div>
+      <div class="path-card">
+        <h3>Same direction</h3>
+        <p>Asia → US: <strong>${agr.asia_us_same_dir_pct ?? "—"}%</strong></p>
+        <p>UK → US: <strong>${agr.uk_us_same_dir_pct ?? "—"}%</strong></p>
+        <p>N: ${agr.n ?? 0}</p>
+      </div>
+      <div class="path-card">
+        <h3>Correlation</h3>
+        <p>Asia vs US: <strong>${agr.corr_asia_us != null ? agr.corr_asia_us : "—"}</strong></p>
+        <p>UK vs US: <strong>${agr.corr_uk_us != null ? agr.corr_uk_us : "—"}</strong></p>
+      </div>
+      <div class="path-card">
+        <h3>Why these</h3>
+        <p>HSTECH ≈ Asia tech (QQQ-like)</p>
+        <p>TWII ≈ Asia semis (SOXL theme)</p>
+        <p>EQQQ.L = Nasdaq-100 in London hours</p>
+      </div>
+    `;
+
+    $("globalScenarios").innerHTML = (g.scenarios || []).map((s) => {
+      const cls = s.strength === "usable" ? "up" : (s.strength === "weak" ? "high" : "down");
+      const avg = s.avg_us_ret == null ? "—" : `${s.avg_us_ret >= 0 ? "+" : ""}${s.avg_us_ret}%`;
+      return `<div class="path-card">
+        <h3>${s.id.replaceAll("_", " ")}</h3>
+        <p>If <strong>${s.lead}</strong> · N=<strong>${s.n}</strong> <span class="${cls}">${s.strength}</span></p>
+        <p class="up">${g.us_symbol} up: <strong>${s.us_up_pct ?? "—"}%</strong></p>
+        <p class="down">${g.us_symbol} down: <strong>${s.us_down_pct ?? "—"}%</strong></p>
+        <p>Avg US session: <strong>${avg}</strong></p>
+      </div>`;
+    }).join("");
+
+    const rows = (g.days || []).map((d) => {
+      const aCls = d.asia_ret >= 0 ? "up" : "down";
+      const uCls = d.uk_ret >= 0 ? "up" : "down";
+      const sCls = d.us_ret >= 0 ? "up" : "down";
+      const fmt = (v) => `${v >= 0 ? "+" : ""}${v}%`;
+      return `<tr>
+        <td>${fmtDate(d.date)}</td>
+        <td>${d.label}</td>
+        <td class="${aCls}">${fmt(d.asia_ret)}</td>
+        <td class="${uCls}">${fmt(d.uk_ret)}</td>
+        <td class="${sCls}">${fmt(d.us_ret)}</td>
+      </tr>`;
+    }).join("");
+
+    $("globalDays").innerHTML = `
+      <div class="table-wrap">
+        <table class="moves-table">
+          <thead><tr>
+            <th>Date</th><th>Day</th>
+            <th>${g.asia_symbol}</th><th>${g.uk_symbol}</th><th>${g.us_symbol}</th>
+          </tr></thead>
+          <tbody>${rows || "<tr><td colspan='5'>No overlapping days — run ingest for Asia/UK symbols</td></tr>"}</tbody>
+        </table>
+      </div>
+    `;
   }
 
   const DROP_WINDOWS = `
@@ -807,6 +898,11 @@
       $("heatTip").textContent = `${labels[r]} ${times[c]} · n=${cell.n} · avg ret=${(cell.avg_ret * 100).toFixed(4)}% · up=${(cell.up_prob * 100).toFixed(0)}%`;
     };
   }
+
+  $("runGlobal")?.addEventListener("click", loadGlobalLead);
+  ["globalAsia", "globalUk", "globalUs", "globalThreshold"].forEach((id) => {
+    $(id)?.addEventListener("change", loadGlobalLead);
+  });
 
   $("reload").addEventListener("click", load);
   $("symbol").addEventListener("change", load);
