@@ -23,7 +23,7 @@ php -S 127.0.0.1:8080
 2. Keeps only weekdays **09:30–16:00 ET**
 3. Stores `symbol, timestamp, price, volume` in SQLite (or MySQL)
 4. Cron sync every 5 minutes (`cron/stocks-intraday`)
-5. API + Chart.js dashboard: scenario explorer (drop/rise %, open drive, morning shapes, QQQ↔SOXL lead-lag), 1-min heatmap, weekday line chart, low→high times, pattern windows
+5. API + Chart.js dashboard: Asia→UK→US lead-lag (HSTECH/TWII/N225 → EQQQ/FTSE → QQQ/SOXL), scenario explorer, heatmap, weekday paths, pattern windows
 
 ## API
 
