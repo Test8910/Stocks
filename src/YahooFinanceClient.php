@@ -85,6 +85,76 @@ final class YahooFinanceClient
     }
 
     /**
+     * Near-live quote from Yahoo chart meta (often delayed).
+     *
+     * @return array{
+     *   yahoo_symbol:string,
+     *   price:float,
+     *   prev_close:float,
+     *   change:float,
+     *   change_pct:float,
+     *   currency:string,
+     *   exchange:string,
+     *   market_state:string,
+     *   as_of_utc:string,
+     *   session_open:?float,
+     *   session_change_pct:?float
+     * }
+     */
+    public function fetchQuote(string $yahooSymbol, bool $includePrePost = true): array
+    {
+        $url = sprintf(self::CHART_URL, rawurlencode($yahooSymbol));
+        $url .= '?' . http_build_query([
+            'interval' => '1m',
+            'range' => '1d',
+            'includePrePost' => $includePrePost ? 'true' : 'false',
+        ]);
+
+        $payload = $this->getJson($url);
+        $result = $payload['chart']['result'][0] ?? null;
+        if ($result === null) {
+            $error = $payload['chart']['error']['description'] ?? 'Unknown Yahoo Finance error';
+            throw new RuntimeException("No quote for {$yahooSymbol}: {$error}");
+        }
+
+        $meta = $result['meta'] ?? [];
+        $price = (float) ($meta['regularMarketPrice'] ?? $meta['previousClose'] ?? 0);
+        $prev = (float) ($meta['chartPreviousClose'] ?? $meta['previousClose'] ?? 0);
+        if ($price <= 0 && $prev > 0) {
+            $price = $prev;
+        }
+        $change = $prev > 0 ? $price - $prev : 0.0;
+        $changePct = $prev > 0 ? ($change / $prev) * 100.0 : 0.0;
+
+        $ts = (int) ($meta['regularMarketTime'] ?? time());
+        $asOf = (new DateTimeImmutable('@' . $ts))->setTimezone(new DateTimeZone('UTC'));
+
+        // First 1m print of the day as session open (better lead than prev close when session is live)
+        $sessionOpen = null;
+        $bars = $this->parseChart($payload, $yahooSymbol);
+        if ($bars !== []) {
+            $sessionOpen = (float) $bars[0]['price'];
+        }
+        $sessionChangePct = ($sessionOpen !== null && $sessionOpen > 0)
+            ? (($price - $sessionOpen) / $sessionOpen) * 100.0
+            : null;
+
+        return [
+            'yahoo_symbol' => $yahooSymbol,
+            'price' => round($price, 4),
+            'prev_close' => round($prev, 4),
+            'change' => round($change, 4),
+            'change_pct' => round($changePct, 3),
+            'currency' => (string) ($meta['currency'] ?? ''),
+            'exchange' => (string) ($meta['exchangeName'] ?? $meta['fullExchangeName'] ?? ''),
+            'market_state' => (string) ($meta['marketState'] ?? 'UNKNOWN'),
+            'as_of_utc' => $asOf->format('Y-m-d H:i:s'),
+            'session_open' => $sessionOpen !== null ? round($sessionOpen, 4) : null,
+            'session_change_pct' => $sessionChangePct !== null ? round($sessionChangePct, 3) : null,
+        ];
+    }
+
+    /**
      * @return list<array{ts:int, price:float, volume:?int}>
      */
     private function fetchRange(string $yahooSymbol, int $period1, int $period2): array

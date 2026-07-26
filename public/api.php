@@ -10,6 +10,7 @@ $config = require dirname(__DIR__) . '/src/bootstrap.php';
 use Stocks\BigMoveDetector;
 use Stocks\Database;
 use Stocks\GlobalLeadLag;
+use Stocks\LiveBiasService;
 use Stocks\PatternEngine;
 use Stocks\PriceRepository;
 use Stocks\ScenarioAnalyzer;
@@ -17,6 +18,7 @@ use Stocks\SessionFilter;
 use Stocks\StatsService;
 use Stocks\SymbolSessions;
 use Stocks\WeekCompare;
+use Stocks\YahooFinanceClient;
 
 try {
     $pdo = Database::pdo($config);
@@ -246,6 +248,38 @@ try {
             }
             $meta = SymbolSessions::all($config);
             $result = (new GlobalLeadLag($stats))->analyze($meta, $uk, $us, $threshold);
+            echo json_encode($result);
+            break;
+        }
+
+        case 'live_bias': {
+            $uk = strtoupper((string) ($_GET['uk'] ?? 'EQQQ'));
+            $us = strtoupper((string) ($_GET['us'] ?? 'QQQ'));
+            if (!in_array($uk, ['EQQQ', 'FTSE'], true)) {
+                $uk = 'EQQQ';
+            }
+            if (!in_array($us, ['QQQ', 'SOXL'], true)) {
+                $us = 'QQQ';
+            }
+            $threshold = isset($_GET['threshold_pct']) ? (float) $_GET['threshold_pct'] : 0.3;
+            $allowed = [0.2, 0.3, 0.5, 1.0];
+            $okT = false;
+            foreach ($allowed as $t) {
+                if (abs($threshold - $t) < 0.001) {
+                    $threshold = $t;
+                    $okT = true;
+                    break;
+                }
+            }
+            if (!$okT) {
+                $threshold = 0.3;
+            }
+            $meta = SymbolSessions::all($config);
+            $yahoo = new YahooFinanceClient(
+                requestDelayMs: (int) ($config['request_delay_ms'] ?? 200)
+            );
+            $result = (new LiveBiasService($yahoo, new GlobalLeadLag($stats)))
+                ->build($meta, $uk, $us, $threshold);
             echo json_encode($result);
             break;
         }

@@ -64,6 +64,41 @@
   <p id="meta" class="meta">Loading…</p>
 
   <section class="section">
+    <h2>Live bias</h2>
+    <p class="hint">Near-live prices + historical UK→US odds for today’s lead. This is a bias from history, not a prediction.</p>
+    <div class="controls compare-controls">
+      <label>
+        UK lead
+        <select id="liveUk">
+          <option value="EQQQ" selected>EQQQ.L — Nasdaq-100 (London)</option>
+          <option value="FTSE">FTSE — FTSE 100</option>
+        </select>
+      </label>
+      <label>
+        US follow
+        <select id="liveUs">
+          <option value="QQQ" selected>QQQ</option>
+          <option value="SOXL">SOXL</option>
+        </select>
+      </label>
+      <label>
+        Lead threshold
+        <select id="liveThreshold">
+          <option value="0.2">0.2%</option>
+          <option value="0.3" selected>0.3%</option>
+          <option value="0.5">0.5%</option>
+          <option value="1">1%</option>
+        </select>
+      </label>
+      <button type="button" id="runLiveBias">Refresh live</button>
+    </div>
+    <p id="liveBiasSummary" class="hint"></p>
+    <p id="liveBiasDisclaimer" class="hint"></p>
+    <div id="liveBiasCards" class="compare-grid"></div>
+    <div id="liveQuotes" class="compare-grid"></div>
+  </section>
+
+  <section class="section">
     <h2>UK → US lead-lag</h2>
     <p class="hint" id="globalHint">London prints Nasdaq-100 (EQQQ.L) before the US cash open. See whether QQQ/SOXL usually follow the same direction.</p>
     <div class="controls compare-controls">

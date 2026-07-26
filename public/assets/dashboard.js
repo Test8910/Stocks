@@ -8,6 +8,8 @@
   let scenarioPathChart = null;
   let scenarioData = null;
   let globalData = null;
+  let liveBiasData = null;
+  let liveBiasTimer = null;
 
   function fmtDate(iso) {
     if (!iso) return "—";
@@ -58,6 +60,76 @@
     try { renderHeat(); } catch (e) { console.error(e); }
     try { loadScenario(); } catch (e) { console.error(e); }
     try { loadGlobalLead(); } catch (e) { console.error(e); }
+    try { loadLiveBias(); } catch (e) { console.error(e); }
+  }
+
+  async function loadLiveBias() {
+    const uk = $("liveUk")?.value || "EQQQ";
+    const us = $("liveUs")?.value || "QQQ";
+    const threshold = $("liveThreshold")?.value || "0.3";
+    if ($("liveBiasSummary")) $("liveBiasSummary").textContent = "Fetching live quotes…";
+    const url = `api.php?action=live_bias&uk=${encodeURIComponent(uk)}&us=${encodeURIComponent(us)}&threshold_pct=${encodeURIComponent(threshold)}`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!data.ok) {
+        if ($("liveBiasSummary")) $("liveBiasSummary").textContent = data.error || "Live bias failed";
+        return;
+      }
+      liveBiasData = data;
+      renderLiveBias();
+    } catch (e) {
+      if ($("liveBiasSummary")) $("liveBiasSummary").textContent = "Live bias error: " + e.message;
+    }
+  }
+
+  function renderLiveBias() {
+    const d = liveBiasData;
+    if (!d || !$("liveBiasSummary")) return;
+    $("liveBiasSummary").textContent = d.summary_text || "";
+    if ($("liveBiasDisclaimer")) $("liveBiasDisclaimer").textContent = d.disclaimer || "";
+
+    const bias = d.bias || "neutral";
+    const biasLabel = bias === "lean_up" ? "LEAN UP" : (bias === "lean_down" ? "LEAN DOWN" : "NEUTRAL");
+    const biasCls = bias === "lean_up" ? "up" : (bias === "lean_down" ? "down" : "high");
+    const lead = d.lead || {};
+    const odds = d.odds || {};
+    const leadPct = lead.pct == null ? "—" : `${lead.pct >= 0 ? "+" : ""}${lead.pct}%`;
+
+    $("liveBiasCards").innerHTML = `
+      <div class="path-card">
+        <h3>Bias now</h3>
+        <p class="${biasCls}" style="font-size:1.4rem;font-weight:600">${biasLabel}</p>
+        <p>${d.uk_symbol} lead: <strong class="${lead.direction === "down" ? "down" : (lead.direction === "up" ? "up" : "")}">${leadPct}</strong> (${lead.direction || "—"})</p>
+        <p>Source: ${lead.source === "session_open" ? "vs session open" : "vs previous close"}</p>
+      </div>
+      <div class="path-card">
+        <h3>Historical odds</h3>
+        <p>Similar days: <strong>${odds.n ?? 0}</strong> · <span class="${odds.strength === "usable" ? "up" : (odds.strength === "weak" ? "high" : "down")}">${odds.strength || "—"}</span></p>
+        <p>Follow lead: <strong>${odds.follow_pct ?? "—"}%</strong></p>
+        <p>Against lead: <strong>${odds.against_pct ?? "—"}%</strong></p>
+        <p>Avg ${d.us_symbol} session: <strong>${odds.avg_us_ret == null ? "—" : ((odds.avg_us_ret >= 0 ? "+" : "") + odds.avg_us_ret + "%")}</strong></p>
+      </div>
+      <div class="path-card">
+        <h3>Overall UK→US</h3>
+        <p>Same direction (all days): <strong>${odds.same_dir_pct ?? "—"}%</strong></p>
+        <p>Correlation: <strong>${odds.corr_uk_us != null ? odds.corr_uk_us : "—"}</strong></p>
+        <p>Updated UTC: ${d.as_of_utc || "—"}</p>
+      </div>
+    `;
+
+    $("liveQuotes").innerHTML = (d.quotes || []).map((q) => {
+      const cls = (q.change_pct ?? 0) >= 0 ? "up" : "down";
+      const ch = q.change_pct == null ? "—" : `${q.change_pct >= 0 ? "+" : ""}${q.change_pct}%`;
+      const sess = q.session_change_pct == null ? "—" : `${q.session_change_pct >= 0 ? "+" : ""}${q.session_change_pct}%`;
+      return `<div class="path-card">
+        <h3>${q.symbol}</h3>
+        <p><strong>${q.price}</strong> ${q.currency || ""}</p>
+        <p class="${cls}">Day: ${ch}</p>
+        <p>Session: ${sess}</p>
+        <p class="hint">${q.exchange || ""} · ${q.market_state || ""} · ${q.as_of_utc || ""}</p>
+      </div>`;
+    }).join("") || "<p class='hint'>No quotes</p>";
   }
 
   async function loadGlobalLead() {
@@ -894,9 +966,18 @@
   }
 
   $("runGlobal")?.addEventListener("click", loadGlobalLead);
-  ["globalAsia", "globalUk", "globalUs", "globalThreshold"].forEach((id) => {
+  ["globalUk", "globalUs", "globalThreshold"].forEach((id) => {
     $(id)?.addEventListener("change", loadGlobalLead);
   });
+
+  $("runLiveBias")?.addEventListener("click", loadLiveBias);
+  ["liveUk", "liveUs", "liveThreshold"].forEach((id) => {
+    $(id)?.addEventListener("change", loadLiveBias);
+  });
+  if (liveBiasTimer) clearInterval(liveBiasTimer);
+  liveBiasTimer = setInterval(() => {
+    try { loadLiveBias(); } catch (e) { /* ignore */ }
+  }, 60000);
 
   $("reload").addEventListener("click", load);
   $("symbol").addEventListener("change", load);
