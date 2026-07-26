@@ -18,6 +18,10 @@ Goal: learn **Mon–Fri** time-of-day patterns for **SOXL** and **QQQ**, includi
 2. **Uptrend / downtrend times** — minutes that historically move up or down ≥ 60%
 3. **Low → high windows** — typical times price is near the session low vs session high, so you can spot “buy earlier / sell later” tendencies per weekday
 
+## Next: deep scenario patterns
+
+See **[PATTERN_SCENARIOS_PLAN.md](PATTERN_SCENARIOS_PLAN.md)** — “If price goes up 09:30→10:00, what usually happens next?” conditional analysis (plan only until approved).
+
 ## Build phases
 
 1. Config + Yahoo 1m client + RTH filter  
