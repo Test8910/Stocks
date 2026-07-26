@@ -59,16 +59,45 @@ QQQ mornings are usually **flat** (|ret| &lt; 0.5%). Better thresholds for QQQ: 
 
 ---
 
+## Idea checked: If it **drops X% in time T**, then what change next?
+
+Rule form:
+
+> **IF** return in window ≤ −X% (or max drawdown ≤ −X%)  
+> **THEN** measure next 60m bounce/continue, rest-of-day, close
+
+### SOXL standouts (15 days, still small N)
+
+| Setup | N | Next 60m | Close green |
+|-------|--:|----------|-------------|
+| Drop ≥1% in **09:30–10:00** | 7 | bounce 43% / keep falling **57%**, avg **−1.4%** | **14%** |
+| Drop ≥2% in **09:30–10:00** | 4 | keep falling **75%**, avg **−3.2%** | **0%** |
+| Drop ≥0.5% in **10:00–11:00** | 8 | **bounce 62%**, avg **+0.8%** | 38% |
+| Drop ≥1% in **11:00–12:00** | 4 | keep falling **75%** | 25% |
+| Drop ≥1.5% in **14:00–15:00** | 4 | **bounce 75%**, avg **+1.3%** | 0% (day already damaged) |
+
+**Read:** Early drop (first 30m) on SOXL often **keeps hurting** into the close. Mid-morning drop (10–11) more often **bounces** next hour. Late drop (14–15) can bounce into the close hour but day may stay red.
+
+QQQ rarely hits −0.5%/−1% in short windows → need tighter % (e.g. 0.2–0.3%) or stick to SOXL for this rule family.
+
+### Extra pattern slots from this idea alone
+
+- Windows (~6) × drop thresholds (~5) × measure type (end-return vs maxDD) × symbols (2) ≈ **~120** more If→Then cards  
+- With outcomes (next60 / rest-day / close) → **~360** stats  
+
+---
+
 ## Pattern families we can build
 
 1. **Opening-drive If→Then** (15/30/60m × up/down/flat) — priority  
-2. **Continuation vs reversal matrix** (morning → close)  
-3. **Conditional time heatmaps** (given open up, minute stats after 10:00)  
-4. **Morning shape clusters** (grind / spike-fade / dip-reclaim / dump)  
-5. **Dollar-move chains** ($5/$7/$9/$11 first move → next opposing move)  
-6. **SOXL↔QQQ confirmation** (both up vs SOXL alone)  
-7. **Weekday-conditioned** versions of all above  
-8. **Unconditional** 1m ≥60% cells (already ~700+ up/down cells per symbol — noisy)
+2. **Drop X% in time T → next change** (this idea) — high priority  
+3. **Continuation vs reversal matrix** (morning → close)  
+4. **Conditional time heatmaps** (given open up, minute stats after 10:00)  
+5. **Morning shape clusters** (grind / spike-fade / dip-reclaim / dump)  
+6. **Dollar-move chains** ($5/$7/$9/$11 first move → next opposing move)  
+7. **SOXL↔QQQ confirmation** (both up vs SOXL alone)  
+8. **Weekday-conditioned** versions of all above  
+9. **Unconditional** 1m ≥60% cells (already ~700+ up/down cells per symbol — noisy)
 
 ---
 
