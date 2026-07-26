@@ -1,17 +1,11 @@
 # Stocks
 
-Simple HTML page.
+Intraday weekday/time-of-day pattern tracker (planned).
 
-## Preview
+## Plan
 
-- Open `index.html` in a browser, or run:
-  ```bash
-  python3 -m http.server 8000
-  ```
-  then visit http://localhost:8000
+See **[PLAN.md](PLAN.md)** for the full build plan (8 phases): Yahoo 1m data → MySQL → cron → PHP API → Chart.js dashboard → pattern rules.
 
-## GitHub Pages
+## Static page
 
-After this is merged to `main`, enable **Settings → Pages → Source: GitHub Actions**.
-
-Live site: https://test8910.github.io/Stocks/
+`index.html` is a simple Hello page. Preview / Pages notes are in the PR.
