@@ -136,15 +136,29 @@
   </section>
 
   <section class="section">
-    <h2>US earnings (EPS vs estimate)</h2>
-    <p class="hint">Last ~2 weeks reported + next ~2 weeks upcoming from Nasdaq calendar. Surprise % = (actual − estimate) / |estimate|. Major = large-cap or QQQ/semis watchlist.</p>
+    <h2>US earnings</h2>
+    <p class="hint">One table for past + upcoming. Choose a date (or All). Columns show <strong>Expected EPS</strong> vs <strong>Actual EPS</strong> (actual blank until reported), plus surprise %.</p>
     <div class="controls compare-controls">
+      <label>
+        Date
+        <select id="earnDate">
+          <option value="all" selected>All dates</option>
+        </select>
+      </label>
+      <label>
+        Show
+        <select id="earnScope">
+          <option value="all" selected>Past + upcoming</option>
+          <option value="upcoming">Upcoming only</option>
+          <option value="past">Past only</option>
+        </select>
+      </label>
       <label>
         Filter
         <select id="earnFilter">
           <option value="major" selected>Major / watchlist</option>
           <option value="watchlist">QQQ &amp; semis watchlist</option>
-          <option value="all">All US (busy)</option>
+          <option value="all">All US</option>
         </select>
       </label>
       <label>
@@ -155,14 +169,10 @@
           <option value="50">$50B+</option>
         </select>
       </label>
-      <button type="button" id="runEarnings">Load earnings</button>
+      <button type="button" id="runEarnings">Refresh</button>
     </div>
     <p id="earnSummary" class="hint"></p>
-    <div id="earnStats" class="compare-grid"></div>
-    <h3 class="subhead">Upcoming</h3>
-    <div id="earnUpcoming" class="big-move-list"></div>
-    <h3 class="subhead">Last 2 weeks (reported)</h3>
-    <div id="earnPast" class="big-move-list"></div>
+    <div id="earnTable" class="big-move-list"></div>
   </section>
 
   <section class="section">

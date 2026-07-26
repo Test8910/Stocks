@@ -256,9 +256,16 @@ button.linkish {
   margin: 1.25rem 0 0.5rem;
   color: var(--text);
 }
-.earn-beat { color: var(--accent); }
-.earn-miss { color: var(--down); }
+.earn-beat { color: var(--accent); font-weight: 600; }
+.earn-miss { color: var(--down); font-weight: 600; }
 .earn-pending { color: var(--muted); }
+.earn-table th:nth-child(4),
+.earn-table th:nth-child(5),
+.earn-table td:nth-child(4),
+.earn-table td:nth-child(5) {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .check-action {
   font-size: 1.35rem;
   font-weight: 600;
