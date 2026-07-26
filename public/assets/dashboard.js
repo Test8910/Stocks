@@ -46,13 +46,13 @@
     $("patternHint").innerHTML = `Recalculated from your selected options: <strong>${iv}-minute</strong> interval and <strong>$${min$}+</strong> moves, plus ≥60% up/down probability windows.`;
     $("meta").textContent = `${data.symbol}: ${iv}-min interval · ${moveCount} moves ≥$${min$} · ${data.session_count} sessions`;
     fillSessionDates();
-    renderCompare();
-    renderBigMoves();
-    renderSessionPrice();
-    renderAvgPrice();
-    renderLowHigh();
-    renderPatterns();
-    renderHeat();
+    try { renderCompare(); } catch (e) { console.error(e); $("compareSummary").innerHTML = `<p class="hint">Compare render error: ${e.message}</p>`; }
+    try { renderBigMoves(); } catch (e) { console.error(e); }
+    try { renderSessionPrice(); } catch (e) { console.error(e); }
+    try { renderAvgPrice(); } catch (e) { console.error(e); }
+    try { renderLowHigh(); } catch (e) { console.error(e); }
+    try { renderPatterns(); } catch (e) { console.error(e); }
+    try { renderHeat(); } catch (e) { console.error(e); }
   }
 
   function renderCompare() {
@@ -89,6 +89,12 @@
         </ul>
       </div>
     `).join("");
+
+    // Charts optional — cards above still show if Chart.js is blocked
+    if (typeof Chart === "undefined") {
+      if (label) label.textContent += " (charts unavailable — cards above still work)";
+      return;
+    }
 
     const labels = cmp.times;
     const tickEvery = Math.max(1, Math.round(labels.length / 12));
