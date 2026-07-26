@@ -118,9 +118,41 @@ button:hover { background: #20352e; }
   font-size: 1rem;
 }
 
-.lh-card .low { color: #7ec8ff; }
-.lh-card .high { color: #f0c674; }
-.lh-card p { margin: 0.2rem 0; font-size: 0.92rem; }
+.lh-card .low, .path-card .low { color: #7ec8ff; }
+.lh-card .high, .path-card .high { color: #f0c674; }
+.lh-card p, .path-card p { margin: 0.2rem 0; font-size: 0.92rem; }
+
+.lh-card.wide { grid-column: span 1; }
+@media (min-width: 900px) {
+  .lowhigh { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+}
+
+.path-summary { margin-top: 0.75rem; }
+.path-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.75rem;
+}
+.path-card h3 { margin: 0 0 0.45rem; font-size: 1.05rem; }
+
+.session-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+.session-list li { margin: 0.25rem 0; }
+button.linkish {
+  background: none;
+  border: none;
+  color: #7ec8ff;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  font: inherit;
+}
 
 .patterns {
   display: grid;

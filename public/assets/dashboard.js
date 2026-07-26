@@ -1,7 +1,8 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   let summary = null;
-  let lineChart = null;
+  let priceChart = null;
+  let avgPriceChart = null;
 
   async function load() {
     const symbol = $("symbol").value;
@@ -14,25 +15,273 @@
     }
     summary = data;
     $("meta").textContent = `${data.symbol}: ${data.bar_count} RTH bars across ${data.session_count} sessions · threshold ${(data.patterns.threshold * 100).toFixed(0)}%`;
+    fillSessionDates();
+    renderSessionPrice();
+    renderAvgPrice();
     renderLowHigh();
     renderPatterns();
-    renderLine();
     renderHeat();
+  }
+
+  function fillSessionDates() {
+    const sel = $("sessionDate");
+    const prev = sel.value;
+    sel.innerHTML = "";
+    (summary.sessions || []).forEach((s) => {
+      const opt = document.createElement("option");
+      opt.value = s.date;
+      opt.textContent = `${s.date} (${s.label})`;
+      sel.appendChild(opt);
+    });
+    if (prev && [...sel.options].some((o) => o.value === prev)) {
+      sel.value = prev;
+    }
+  }
+
+  function selectedSession() {
+    const date = $("sessionDate").value;
+    return (summary.sessions || []).find((s) => s.date === date) || summary.sessions?.[0] || null;
+  }
+
+  function renderSessionPrice() {
+    const s = selectedSession();
+    const box = $("pathSummary");
+    if (!s) {
+      box.innerHTML = "<p>No session data.</p>";
+      return;
+    }
+
+    const lowToHigh = s.high_after_low
+      ? `<span class="up">Low → High in ${s.minutes_low_to_high} min (+${s.move_pct}%)</span>`
+      : `<span class="down">High printed before low (down-day shape) · range ${s.move_pct ?? "—"}%</span>`;
+
+    box.innerHTML = `
+      <div class="path-card">
+        <h3>${summary.symbol} · ${s.date} · ${s.label}</h3>
+        <p class="low">Lower price: <strong>$${s.low_price}</strong> at <strong>${s.low_time}</strong></p>
+        <p class="high">Higher price: <strong>$${s.high_price}</strong> at <strong>${s.high_time}</strong></p>
+        <p>${lowToHigh}</p>
+      </div>
+    `;
+
+    const labels = s.points.map((p) => p.time);
+    const prices = s.points.map((p) => p.price);
+    const lowIdx = s.points.findIndex((p) => p.time === s.low_time && p.price === s.low_price);
+    const highIdx = s.points.findIndex((p) => p.time === s.high_time && p.price === s.high_price);
+
+    // Segment: emphasize low → high stretch
+    const segment = prices.map((p, i) => {
+      if (!s.high_after_low) return null;
+      const lo = Math.min(lowIdx, highIdx);
+      const hi = Math.max(lowIdx, highIdx);
+      return i >= lo && i <= hi ? p : null;
+    });
+
+    const ctx = $("priceChart").getContext("2d");
+    if (priceChart) priceChart.destroy();
+    priceChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "Price",
+            data: prices,
+            borderColor: "#8aa4b8",
+            backgroundColor: "rgba(138,164,184,0.08)",
+            fill: true,
+            pointRadius: 0,
+            borderWidth: 1.5,
+            tension: 0.05,
+          },
+          {
+            label: "Low → High",
+            data: segment,
+            borderColor: "#3dbb8b",
+            backgroundColor: "rgba(61,187,139,0.15)",
+            fill: true,
+            pointRadius: 0,
+            borderWidth: 2.5,
+            tension: 0.05,
+            spanGaps: false,
+          },
+          {
+            label: "Low",
+            data: prices.map((p, i) => (i === lowIdx ? p : null)),
+            borderColor: "#7ec8ff",
+            backgroundColor: "#7ec8ff",
+            pointRadius: 5,
+            pointHoverRadius: 7,
+            showLine: false,
+          },
+          {
+            label: "High",
+            data: prices.map((p, i) => (i === highIdx ? p : null)),
+            borderColor: "#f0c674",
+            backgroundColor: "#f0c674",
+            pointRadius: 5,
+            pointHoverRadius: 7,
+            showLine: false,
+          },
+        ],
+      },
+      options: chartOptions("Price ($)"),
+    });
+  }
+
+  function renderAvgPrice() {
+    const wd = $("weekday").value;
+    const avg = summary.weekday_avg_price?.[wd];
+    const box = $("avgPathSummary");
+    if (!avg) {
+      box.innerHTML = "";
+      return;
+    }
+
+    const highAfter = avg.low_time && avg.high_time && avg.high_time > avg.low_time;
+    // string compare works for HH:MM
+    box.innerHTML = `
+      <div class="path-card">
+        <h3>Average ${avg.label} path (${avg.sessions} sessions)</h3>
+        <p class="low">Avg lower area: <strong>$${avg.low_price ?? "—"}</strong> near <strong>${avg.low_time ?? "—"}</strong></p>
+        <p class="high">Avg higher area: <strong>$${avg.high_price ?? "—"}</strong> near <strong>${avg.high_time ?? "—"}</strong></p>
+        <p>${highAfter ? '<span class="up">On average, high comes after low on this weekday</span>' : '<span class="down">On average, high comes before low on this weekday</span>'}</p>
+      </div>
+    `;
+
+    const labels = avg.times;
+    const prices = avg.avg_price;
+    const lowIdx = labels.indexOf(avg.low_time);
+    const highIdx = labels.indexOf(avg.high_time);
+    const segment = prices.map((p, i) => {
+      if (lowIdx < 0 || highIdx < 0 || highIdx <= lowIdx) return null;
+      return i >= lowIdx && i <= highIdx ? p : null;
+    });
+
+    const ctx = $("avgPriceChart").getContext("2d");
+    if (avgPriceChart) avgPriceChart.destroy();
+    avgPriceChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: `Avg ${avg.label} price`,
+            data: prices,
+            borderColor: "#8aa4b8",
+            backgroundColor: "rgba(138,164,184,0.08)",
+            fill: true,
+            pointRadius: 0,
+            borderWidth: 1.5,
+            tension: 0.15,
+            spanGaps: false,
+          },
+          {
+            label: "Low → High stretch",
+            data: segment,
+            borderColor: "#3dbb8b",
+            fill: false,
+            pointRadius: 0,
+            borderWidth: 2.5,
+            tension: 0.15,
+            spanGaps: false,
+          },
+          {
+            label: "Low",
+            data: prices.map((p, i) => (i === lowIdx ? p : null)),
+            backgroundColor: "#7ec8ff",
+            borderColor: "#7ec8ff",
+            pointRadius: 5,
+            showLine: false,
+          },
+          {
+            label: "High",
+            data: prices.map((p, i) => (i === highIdx ? p : null)),
+            backgroundColor: "#f0c674",
+            borderColor: "#f0c674",
+            pointRadius: 5,
+            showLine: false,
+          },
+        ],
+      },
+      options: chartOptions("Avg price ($)"),
+    });
+  }
+
+  function chartOptions(yTitle) {
+    return {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: {
+          ticks: {
+            maxTicksLimit: 14,
+            color: "#9aabbc",
+            callback(v, i, ticks) {
+              const label = this.getLabelForValue(v);
+              return i % 30 === 0 ? label : "";
+            },
+          },
+          grid: { color: "#2a3644" },
+        },
+        y: {
+          ticks: { color: "#9aabbc" },
+          grid: { color: "#2a3644" },
+          title: { display: true, text: yTitle, color: "#9aabbc" },
+        },
+      },
+      plugins: {
+        legend: { labels: { color: "#e8eef4" } },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              if (ctx.raw == null) return null;
+              return `${ctx.dataset.label}: $${Number(ctx.raw).toFixed(2)}`;
+            },
+          },
+        },
+      },
+    };
   }
 
   function renderLowHigh() {
     const root = $("lowHigh");
     root.innerHTML = "";
+    const byWd = {};
+    (summary.sessions || []).forEach((s) => {
+      if (!byWd[s.weekday]) byWd[s.weekday] = [];
+      byWd[s.weekday].push(s);
+    });
+
     (summary.low_high || []).forEach((d) => {
+      const sessions = byWd[d.weekday] || [];
+      const rows = sessions
+        .map((s) => {
+          const arrow = s.high_after_low
+            ? `${s.low_time} $${s.low_price} → ${s.high_time} $${s.high_price} (+${s.move_pct}%)`
+            : `${s.high_time} high $${s.high_price}, then low ${s.low_time} $${s.low_price}`;
+          return `<li><button type="button" class="linkish" data-date="${s.date}">${s.date}</button>: ${arrow}</li>`;
+        })
+        .join("");
+
       const el = document.createElement("div");
-      el.className = "lh-card";
+      el.className = "lh-card wide";
       el.innerHTML = `
         <h3>${d.label}</h3>
-        <p class="low">Typical low: <strong>${d.typical_low_time ?? "—"}</strong></p>
-        <p class="high">Typical high: <strong>${d.typical_high_time ?? "—"}</strong></p>
-        <p>${d.sessions ?? 0} sessions</p>
+        <p class="low">Typical low time: <strong>${d.typical_low_time ?? "—"}</strong></p>
+        <p class="high">Typical high time: <strong>${d.typical_high_time ?? "—"}</strong></p>
+        <ul class="session-list">${rows || "<li>No sessions</li>"}</ul>
       `;
       root.appendChild(el);
+    });
+
+    root.querySelectorAll("button[data-date]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        $("sessionDate").value = btn.getAttribute("data-date");
+        renderSessionPrice();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
     });
   }
 
@@ -49,10 +298,10 @@
         .map((w) => `<li class="down">${w.start}–${w.end} (down ${(w.avg_down_prob * 100).toFixed(0)}%)</li>`)
         .join("") || "<li>None</li>";
       const buy = d.buy_zone
-        ? `<p class="up">Buy zone (near lows): ${d.buy_zone.start}–${d.buy_zone.end} (center ${d.buy_zone.center})</p>`
+        ? `<p class="up">Near lows: ${d.buy_zone.start}–${d.buy_zone.end}</p>`
         : "";
       const sell = d.sell_zone
-        ? `<p class="down">Sell zone (near highs): ${d.sell_zone.start}–${d.sell_zone.end} (center ${d.sell_zone.center})</p>`
+        ? `<p class="down">Near highs: ${d.sell_zone.start}–${d.sell_zone.end}</p>`
         : "";
       const el = document.createElement("div");
       el.className = "pat-day";
@@ -65,57 +314,6 @@
         <ul>${downs}</ul>
       `;
       root.appendChild(el);
-    });
-  }
-
-  function renderLine() {
-    const wd = $("weekday").value;
-    const day = summary.weekdays?.[wd];
-    if (!day) return;
-    const labels = day.minutes.map((m) => m.time);
-    const rets = day.minutes.map((m) => (m.n ? m.avg_ret * 10000 : null)); // bps-ish scale *10 for visibility → actually avg_ret*10000 = basis points-ish
-    const ctx = $("lineChart").getContext("2d");
-    if (lineChart) lineChart.destroy();
-    lineChart = new Chart(ctx, {
-      type: "line",
-      data: {
-        labels,
-        datasets: [{
-          label: `${summary.symbol} ${day.label} avg return (×10000)`,
-          data: rets,
-          borderColor: "#3dbb8b",
-          backgroundColor: "rgba(61,187,139,0.12)",
-          fill: true,
-          pointRadius: 0,
-          borderWidth: 1.5,
-          tension: 0.15,
-          spanGaps: false,
-        }],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: true,
-        scales: {
-          x: {
-            ticks: {
-              maxTicksLimit: 14,
-              color: "#9aabbc",
-              callback(v, i) {
-                return i % 30 === 0 ? labels[i] : "";
-              },
-            },
-            grid: { color: "#2a3644" },
-          },
-          y: {
-            ticks: { color: "#9aabbc" },
-            grid: { color: "#2a3644" },
-            title: { display: true, text: "avg 1m return × 10000", color: "#9aabbc" },
-          },
-        },
-        plugins: {
-          legend: { labels: { color: "#e8eef4" } },
-        },
-      },
     });
   }
 
@@ -156,8 +354,6 @@
         ctx.fillRect(labelW + c * cellW, r * cellH, cellW, cellH - 2);
       }
     }
-
-    // time axis ticks every 30m
     ctx.fillStyle = "#9aabbc";
     ctx.font = "10px sans-serif";
     for (let c = 0; c < cols; c += 30) {
@@ -181,12 +377,13 @@
         $("heatTip").textContent = `${labels[r]} ${times[c]} — no samples`;
         return;
       }
-      $("heatTip").textContent = `${labels[r]} ${times[c]} · n=${cell.n} · avg ret=${(cell.avg_ret * 100).toFixed(4)}% · up=${(cell.up_prob * 100).toFixed(0)}% · near-high=${(cell.avg_rel_high * 100).toFixed(0)}%`;
+      $("heatTip").textContent = `${labels[r]} ${times[c]} · n=${cell.n} · avg ret=${(cell.avg_ret * 100).toFixed(4)}% · up=${(cell.up_prob * 100).toFixed(0)}%`;
     };
   }
 
   $("reload").addEventListener("click", load);
   $("symbol").addEventListener("change", load);
-  $("weekday").addEventListener("change", () => summary && renderLine());
+  $("sessionDate").addEventListener("change", () => summary && renderSessionPrice());
+  $("weekday").addEventListener("change", () => summary && renderAvgPrice());
   load();
 })();

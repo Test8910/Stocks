@@ -14,8 +14,8 @@
   <header class="top">
     <div>
       <p class="brand">Stocks</p>
-      <h1>Intraday patterns — SOXL &amp; QQQ</h1>
-      <p class="sub">Mon–Fri · 09:30–16:00 ET · 1-minute heatmap · learn when price is typically low vs high</p>
+      <h1>Price, low, then high — SOXL &amp; QQQ</h1>
+      <p class="sub">See price with time, the session low, and when price moved from that low to the high (Mon–Fri, 09:30–16:00 ET)</p>
     </div>
     <div class="controls">
       <label>
@@ -26,7 +26,11 @@
         </select>
       </label>
       <label>
-        Weekday chart
+        Session day
+        <select id="sessionDate"></select>
+      </label>
+      <label>
+        Weekday avg
         <select id="weekday">
           <option value="1">Monday</option>
           <option value="2">Tuesday</option>
@@ -42,21 +46,31 @@
   <p id="meta" class="meta">Loading…</p>
 
   <section class="section">
-    <h2>Typical low → high (by weekday)</h2>
-    <p class="hint">Average clock time when the session low and session high printed over recent days.</p>
+    <h2>Price with time (selected session)</h2>
+    <div id="pathSummary" class="path-summary"></div>
+    <div class="chart-wrap">
+      <canvas id="priceChart" height="120"></canvas>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Average price path for weekday</h2>
+    <p class="hint">Average price by minute for the selected weekday. Markers show where the average curve is lowest and highest.</p>
+    <div id="avgPathSummary" class="path-summary"></div>
+    <div class="chart-wrap">
+      <canvas id="avgPriceChart" height="110"></canvas>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Low → high by weekday</h2>
+    <p class="hint">For each weekday: typical low time/price path vs high — so you can see when dips tend to happen and when highs print.</p>
     <div id="lowHigh" class="lowhigh"></div>
   </section>
 
   <section class="section">
     <h2>Pattern windows (≥ 60% probability)</h2>
     <div id="patterns" class="patterns"></div>
-  </section>
-
-  <section class="section">
-    <h2>Average per-minute return — selected weekday</h2>
-    <div class="chart-wrap">
-      <canvas id="lineChart" height="110"></canvas>
-    </div>
   </section>
 
   <section class="section">

@@ -196,4 +196,174 @@ final class StatsService
             'low_high' => $lowHigh,
         ];
     }
+
+    /**
+     * Price-vs-time for each session, with low → high path details.
+     *
+     * @return list<array{
+     *   date:string,
+     *   weekday:int,
+     *   label:string,
+     *   points:list<array{time:string,minute_of_day:int,price:float}>,
+     *   low_price:float,
+     *   low_time:string,
+     *   high_price:float,
+     *   high_time:string,
+     *   high_after_low:bool,
+     *   minutes_low_to_high:?int,
+     *   move_pct:?float
+     * }>
+     */
+    public function sessionPaths(string $symbol): array
+    {
+        $bars = $this->repo->barsForSymbol($symbol);
+        $labels = [1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri'];
+        $bySession = [];
+        foreach ($bars as $bar) {
+            $bySession[$bar['session_date']][] = $bar;
+        }
+
+        $paths = [];
+        foreach ($bySession as $date => $dayBars) {
+            usort($dayBars, static fn ($a, $b) => $a['minute_of_day'] <=> $b['minute_of_day']);
+            $weekday = (int) $dayBars[0]['weekday'];
+
+            $lowMinute = null;
+            $highMinute = null;
+            $lowPrice = PHP_FLOAT_MAX;
+            $highPrice = -PHP_FLOAT_MAX;
+            $points = [];
+
+            foreach ($dayBars as $b) {
+                $m = (int) $b['minute_of_day'];
+                $p = (float) $b['price'];
+                $points[] = [
+                    'time' => $this->session->minuteLabel($m),
+                    'minute_of_day' => $m,
+                    'price' => $p,
+                ];
+                if ($p < $lowPrice) {
+                    $lowPrice = $p;
+                    $lowMinute = $m;
+                }
+                if ($p > $highPrice) {
+                    $highPrice = $p;
+                    $highMinute = $m;
+                }
+            }
+
+            $highAfterLow = $lowMinute !== null && $highMinute !== null && $highMinute > $lowMinute;
+            $minutesLh = ($lowMinute !== null && $highMinute !== null)
+                ? abs($highMinute - $lowMinute)
+                : null;
+            $movePct = ($lowPrice > 0 && $highAfterLow)
+                ? (($highPrice - $lowPrice) / $lowPrice) * 100
+                : (($lowPrice > 0 && $highMinute !== null && $lowMinute !== null)
+                    ? (($highPrice - $lowPrice) / $lowPrice) * 100
+                    : null);
+
+            $paths[] = [
+                'date' => $date,
+                'weekday' => $weekday,
+                'label' => $labels[$weekday] ?? (string) $weekday,
+                'points' => $points,
+                'low_price' => round($lowPrice, 4),
+                'low_time' => $lowMinute !== null ? $this->session->minuteLabel($lowMinute) : null,
+                'high_price' => round($highPrice, 4),
+                'high_time' => $highMinute !== null ? $this->session->minuteLabel($highMinute) : null,
+                'high_after_low' => $highAfterLow,
+                'minutes_low_to_high' => $highAfterLow ? $minutesLh : null,
+                'move_pct' => $movePct !== null ? round($movePct, 3) : null,
+            ];
+        }
+
+        usort($paths, static fn ($a, $b) => strcmp($b['date'], $a['date']));
+        return $paths;
+    }
+
+    /**
+     * Average price by minute for a weekday (aligned to open = 100).
+     *
+     * @return array{
+     *   weekday:int,
+     *   label:string,
+     *   times:list<string>,
+     *   avg_price:list<?float>,
+     *   avg_norm:list<?float>,
+     *   low_time:?string,
+     *   high_time:?string,
+     *   low_price:?float,
+     *   high_price:?float
+     * }
+     */
+    public function weekdayAvgPrice(string $symbol, int $weekday): array
+    {
+        $paths = array_values(array_filter(
+            $this->sessionPaths($symbol),
+            static fn ($p) => (int) $p['weekday'] === $weekday
+        ));
+        $labels = [1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri'];
+        $sessionLen = $this->session->sessionLengthMinutes();
+        $sums = array_fill(0, $sessionLen, 0.0);
+        $normSums = array_fill(0, $sessionLen, 0.0);
+        $counts = array_fill(0, $sessionLen, 0);
+
+        foreach ($paths as $path) {
+            $open = $path['points'][0]['price'] ?? null;
+            if ($open === null || $open <= 0) {
+                continue;
+            }
+            foreach ($path['points'] as $pt) {
+                $m = (int) $pt['minute_of_day'];
+                if ($m < 0 || $m >= $sessionLen) {
+                    continue;
+                }
+                $sums[$m] += (float) $pt['price'];
+                $normSums[$m] += ((float) $pt['price'] / $open) * 100.0;
+                $counts[$m]++;
+            }
+        }
+
+        $avgPrice = [];
+        $avgNorm = [];
+        $times = [];
+        $bestLow = null;
+        $bestHigh = null;
+        $lowM = null;
+        $highM = null;
+
+        for ($m = 0; $m < $sessionLen; $m++) {
+            $times[] = $this->session->minuteLabel($m);
+            if ($counts[$m] === 0) {
+                $avgPrice[] = null;
+                $avgNorm[] = null;
+                continue;
+            }
+            $p = $sums[$m] / $counts[$m];
+            $n = $normSums[$m] / $counts[$m];
+            $avgPrice[] = round($p, 4);
+            $avgNorm[] = round($n, 4);
+            if ($bestLow === null || $p < $bestLow) {
+                $bestLow = $p;
+                $lowM = $m;
+            }
+            if ($bestHigh === null || $p > $bestHigh) {
+                $bestHigh = $p;
+                $highM = $m;
+            }
+        }
+
+        return [
+            'weekday' => $weekday,
+            'label' => $labels[$weekday] ?? (string) $weekday,
+            'times' => $times,
+            'avg_price' => $avgPrice,
+            'avg_norm' => $avgNorm,
+            'low_time' => $lowM !== null ? $this->session->minuteLabel($lowM) : null,
+            'high_time' => $highM !== null ? $this->session->minuteLabel($highM) : null,
+            'low_price' => $bestLow !== null ? round($bestLow, 4) : null,
+            'high_price' => $bestHigh !== null ? round($bestHigh, 4) : null,
+            'sessions' => count($paths),
+        ];
+    }
 }

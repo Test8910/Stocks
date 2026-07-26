@@ -94,9 +94,32 @@ try {
             break;
         }
 
+        case 'session': {
+            $date = (string) ($_GET['date'] ?? '');
+            $paths = $stats->sessionPaths($symbol);
+            $match = null;
+            foreach ($paths as $p) {
+                if ($date === '' || $p['date'] === $date) {
+                    $match = $p;
+                    if ($date !== '') {
+                        break;
+                    }
+                    // default: newest
+                    break;
+                }
+            }
+            echo json_encode(['ok' => true, 'symbol' => $symbol, 'session' => $match, 'dates' => array_column($paths, 'date')]);
+            break;
+        }
+
         case 'summary': {
             $analysis = $stats->analyze($symbol);
             $detected = $patterns->detect($analysis);
+            $paths = $stats->sessionPaths($symbol);
+            $weekdayAvgs = [];
+            for ($wd = 1; $wd <= 5; $wd++) {
+                $weekdayAvgs[$wd] = $stats->weekdayAvgPrice($symbol, $wd);
+            }
             echo json_encode([
                 'ok' => true,
                 'symbol' => $symbol,
@@ -111,6 +134,8 @@ try {
                 ),
                 'weekday_labels' => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
                 'weekdays' => $analysis['weekdays'],
+                'sessions' => $paths,
+                'weekday_avg_price' => $weekdayAvgs,
             ]);
             break;
         }
