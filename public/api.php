@@ -20,6 +20,7 @@ use Stocks\StatsService;
 use Stocks\SymbolSessions;
 use Stocks\TradeChecklistService;
 use Stocks\WeekCompare;
+use Stocks\WeekdayReturns;
 use Stocks\YahooFinanceClient;
 
 try {
@@ -338,6 +339,12 @@ try {
                 $repo,
                 $yahoo
             ))->build($meta, $config, $uk, $us, $threshold, $syncLive);
+            echo json_encode($result);
+            break;
+        }
+
+        case 'weekday_returns': {
+            $result = (new WeekdayReturns($stats))->build(['SOXL', 'QQQ']);
             echo json_encode($result);
             break;
         }

@@ -136,6 +136,15 @@
   </section>
 
   <section class="section">
+    <h2>Mon–Fri session % (SOXL &amp; QQQ)</h2>
+    <p class="hint">Open→close % for each weekday session. Summary shows how often each weekday finished up, plus every day side-by-side.</p>
+    <button type="button" id="runWeekdayReturns">Refresh</button>
+    <p id="weekdayReturnsSummary" class="hint"></p>
+    <div id="weekdayReturnsCards" class="compare-grid"></div>
+    <div id="weekdayReturnsTable" class="big-move-list"></div>
+  </section>
+
+  <section class="section">
     <h2>UK → US lead-lag</h2>
     <p class="hint" id="globalHint">London prints Nasdaq-100 (EQQQ.L) before the US cash open. See whether QQQ/SOXL usually follow the same direction.</p>
     <div class="controls compare-controls">

@@ -65,6 +65,67 @@
     try { loadLiveBias(); } catch (e) { console.error(e); }
     try { loadRsi(); } catch (e) { console.error(e); }
     try { loadChecklist(); } catch (e) { console.error(e); }
+    try { loadWeekdayReturns(); } catch (e) { console.error(e); }
+  }
+
+  async function loadWeekdayReturns() {
+    if ($("weekdayReturnsSummary")) $("weekdayReturnsSummary").textContent = "Loading Mon–Fri returns…";
+    try {
+      const res = await fetch("api.php?action=weekday_returns");
+      const data = await res.json();
+      if (!data.ok) {
+        if ($("weekdayReturnsSummary")) $("weekdayReturnsSummary").textContent = data.error || "Failed";
+        return;
+      }
+      renderWeekdayReturns(data);
+    } catch (e) {
+      if ($("weekdayReturnsSummary")) $("weekdayReturnsSummary").textContent = "Error: " + e.message;
+    }
+  }
+
+  function renderWeekdayReturns(d) {
+    if (!d || !$("weekdayReturnsSummary")) return;
+    $("weekdayReturnsSummary").textContent = d.summary_text || "";
+
+    const cards = [];
+    (d.symbols || []).forEach((sym) => {
+      const block = d.by_symbol?.[sym];
+      if (!block) return;
+      (block.by_weekday || []).forEach((w) => {
+        const avg = w.avg_ret == null ? "—" : `${w.avg_ret >= 0 ? "+" : ""}${w.avg_ret}%`;
+        const avgCls = (w.avg_ret ?? 0) >= 0 ? "up" : "down";
+        cards.push(`<div class="path-card">
+          <h3>${sym} · ${w.label}</h3>
+          <p>Sessions: <strong>${w.n}</strong></p>
+          <p class="up">Up days: <strong>${w.up_pct ?? "—"}%</strong> (${w.up_n}/${w.n})</p>
+          <p class="${avgCls}">Avg open→close: <strong>${avg}</strong></p>
+        </div>`);
+      });
+    });
+    $("weekdayReturnsCards").innerHTML = cards.join("") || "<p class='hint'>No data</p>";
+
+    const fmt = (v) => v == null ? "—" : `${v >= 0 ? "+" : ""}${v}%`;
+    const rows = (d.rows || []).map((r) => {
+      const soxl = r.rets?.SOXL;
+      const qqq = r.rets?.QQQ;
+      const sCls = soxl == null ? "" : (soxl >= 0 ? "up" : "down");
+      const qCls = qqq == null ? "" : (qqq >= 0 ? "up" : "down");
+      return `<tr>
+        <td>${fmtDate(r.date)}</td>
+        <td>${r.label || "—"}</td>
+        <td class="${sCls}">${fmt(soxl)}</td>
+        <td class="${qCls}">${fmt(qqq)}</td>
+      </tr>`;
+    }).join("");
+
+    $("weekdayReturnsTable").innerHTML = `
+      <div class="table-wrap">
+        <table class="moves-table">
+          <thead><tr><th>Date</th><th>Day</th><th>SOXL %</th><th>QQQ %</th></tr></thead>
+          <tbody>${rows || "<tr><td colspan='4'>No sessions</td></tr>"}</tbody>
+        </table>
+      </div>
+    `;
   }
 
   async function loadChecklist() {
@@ -1174,6 +1235,8 @@
   checklistTimer = setInterval(() => {
     try { loadChecklist(); } catch (e) { /* ignore */ }
   }, checklistRefreshSec * 1000);
+
+  $("runWeekdayReturns")?.addEventListener("click", loadWeekdayReturns);
 
   $("reload").addEventListener("click", load);
   $("symbol").addEventListener("change", load);
