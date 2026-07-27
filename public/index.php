@@ -188,6 +188,56 @@
   </section>
 
   <section class="section">
+    <h2>UK down + US open crash</h2>
+    <p class="hint">Combined rule at the US open: if London (EQQQ/FTSE) is already down and SOXL/QQQ dumps in the first 15–30 minutes, what usually happens by 10:30 and the close? Includes contrast days where the US dumped without UK confirmation.</p>
+    <div class="controls compare-controls">
+      <label>
+        UK lead
+        <select id="ukCrashUk">
+          <option value="EQQQ" selected>EQQQ.L</option>
+          <option value="FTSE">FTSE</option>
+        </select>
+      </label>
+      <label>
+        US symbol
+        <select id="ukCrashUs">
+          <option value="SOXL" selected>SOXL</option>
+          <option value="QQQ">QQQ</option>
+        </select>
+      </label>
+      <label>
+        UK ≤
+        <select id="ukCrashUkThresh">
+          <option value="0.3" selected>−0.3%</option>
+          <option value="0.5">−0.5%</option>
+          <option value="1">−1.0%</option>
+        </select>
+      </label>
+      <label>
+        US open ≤
+        <select id="ukCrashUsThresh">
+          <option value="2" selected>−2%</option>
+          <option value="3">−3%</option>
+          <option value="4">−4%</option>
+        </select>
+      </label>
+      <label>
+        Open window
+        <select id="ukCrashWindow">
+          <option value="15" selected>09:30–09:45</option>
+          <option value="30">09:30–10:00</option>
+        </select>
+      </label>
+      <button type="button" id="runUkOpenCrash">Run rule</button>
+    </div>
+    <p id="ukCrashSummary" class="hint"></p>
+    <p id="ukCrashLive" class="hint"></p>
+    <div id="ukCrashCards" class="compare-grid"></div>
+    <div id="ukCrashMatches" class="big-move-list"></div>
+    <div id="ukCrashContrast" class="big-move-list"></div>
+  </section>
+
+  <section class="section">
     <h2>Day played out — pattern match</h2>
     <p class="hint">Classify today’s session shape (AM crash, reclaim, fade, etc.), find similar historical days, and summarize how those cases closed.</p>
     <div class="controls compare-controls">

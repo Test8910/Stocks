@@ -21,6 +21,7 @@ use Stocks\SessionFilter;
 use Stocks\StatsService;
 use Stocks\SymbolSessions;
 use Stocks\TradeChecklistService;
+use Stocks\UkOpenCrashAnalyzer;
 use Stocks\WeekCompare;
 use Stocks\WeekdayReturns;
 use Stocks\YahooFinanceClient;
@@ -366,6 +367,63 @@ try {
             $result = (new DayPatternMatcher($session))->analyze($paths, $sym, $focus);
             $result['interval_minutes'] = 1;
             $result['requested_interval'] = $interval;
+            echo json_encode($result);
+            break;
+        }
+
+        case 'uk_open_crash': {
+            $uk = strtoupper((string) ($_GET['uk'] ?? 'EQQQ'));
+            $us = strtoupper((string) ($_GET['us'] ?? 'SOXL'));
+            if (!in_array($uk, ['EQQQ', 'FTSE'], true)) {
+                $uk = 'EQQQ';
+            }
+            if (!in_array($us, ['SOXL', 'QQQ'], true)) {
+                $us = 'SOXL';
+            }
+            $ukThresh = isset($_GET['uk_threshold_pct']) ? (float) $_GET['uk_threshold_pct'] : 0.3;
+            $ukAllowed = [0.3, 0.5, 1.0];
+            $okUk = false;
+            foreach ($ukAllowed as $t) {
+                if (abs($ukThresh - $t) < 0.001) {
+                    $ukThresh = $t;
+                    $okUk = true;
+                    break;
+                }
+            }
+            if (!$okUk) {
+                $ukThresh = 0.3;
+            }
+            $usThresh = isset($_GET['us_open_threshold_pct']) ? (float) $_GET['us_open_threshold_pct'] : 2.0;
+            $usAllowed = [2.0, 3.0, 4.0];
+            $okUs = false;
+            foreach ($usAllowed as $t) {
+                if (abs($usThresh - $t) < 0.001) {
+                    $usThresh = $t;
+                    $okUs = true;
+                    break;
+                }
+            }
+            if (!$okUs) {
+                $usThresh = 2.0;
+            }
+            $window = isset($_GET['window']) ? (int) $_GET['window'] : 15;
+            if (!in_array($window, [15, 30], true)) {
+                $window = 15;
+            }
+            $focus = isset($_GET['date']) ? (string) $_GET['date'] : null;
+            if ($focus !== null && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $focus)) {
+                $focus = null;
+            }
+            $meta = SymbolSessions::all($config);
+            $result = (new UkOpenCrashAnalyzer($stats))->analyze(
+                $meta,
+                $uk,
+                $us,
+                $ukThresh,
+                $usThresh,
+                $window,
+                $focus
+            );
             echo json_encode($result);
             break;
         }

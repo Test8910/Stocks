@@ -67,6 +67,7 @@
     try { loadChecklist(); } catch (e) { console.error(e); }
     try { loadWeekdayReturns(); } catch (e) { console.error(e); }
     try { loadDayPattern(); } catch (e) { console.error(e); }
+    try { loadUkOpenCrash(); } catch (e) { console.error(e); }
     try { loadEarnings(); } catch (e) { console.error(e); }
   }
 
@@ -273,6 +274,134 @@
     } catch (e) {
       if ($("dayPatternStory")) $("dayPatternStory").textContent = "Error: " + e.message;
     }
+  }
+
+  async function loadUkOpenCrash() {
+    const uk = $("ukCrashUk")?.value || "EQQQ";
+    const us = $("ukCrashUs")?.value || "SOXL";
+    const ukThresh = $("ukCrashUkThresh")?.value || "0.3";
+    const usThresh = $("ukCrashUsThresh")?.value || "2";
+    const window = $("ukCrashWindow")?.value || "15";
+    if ($("ukCrashSummary")) $("ukCrashSummary").textContent = "Running UK + open crash rule…";
+    if ($("ukCrashLive")) $("ukCrashLive").textContent = "";
+    const url = `api.php?action=uk_open_crash&uk=${encodeURIComponent(uk)}&us=${encodeURIComponent(us)}&uk_threshold_pct=${encodeURIComponent(ukThresh)}&us_open_threshold_pct=${encodeURIComponent(usThresh)}&window=${encodeURIComponent(window)}`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!data.ok) {
+        if ($("ukCrashSummary")) $("ukCrashSummary").textContent = data.error || "Rule failed";
+        return;
+      }
+      renderUkOpenCrash(data);
+    } catch (e) {
+      if ($("ukCrashSummary")) $("ukCrashSummary").textContent = "Error: " + e.message;
+    }
+  }
+
+  function renderUkOpenCrash(d) {
+    if (!d || !$("ukCrashSummary")) return;
+    const fmtPct = (v) => v == null ? "—" : `${v >= 0 ? "+" : ""}${Number(v).toFixed(2)}%`;
+    $("ukCrashSummary").textContent = d.summary_text || "";
+    const live = d.live || {};
+    const liveCls = live.fired ? "down" : (live.level === "watch" ? "" : "");
+    $("ukCrashLive").innerHTML = live.note
+      ? `<span class="${liveCls}"><strong>${live.fired ? "FIRED" : (live.status || "").toUpperCase()}</strong> — ${live.note}</span>`
+      : "";
+
+    const t = d.today || {};
+    const combined = d.cohort_combined || {};
+    const usOnly = d.cohort_us_only || {};
+    const ukOnly = d.cohort_uk_only || {};
+
+    const cards = [];
+    cards.push(`<div class="path-card">
+      <h3>Focus · ${t.date || d.focus_date || "—"}</h3>
+      <p>${d.uk_symbol} ${fmtPct(t.uk_ret)} · ${d.us_symbol} open ${fmtPct(t.us_open_ret)}</p>
+      <p class="${(t.us_r60 ?? 0) >= 0 ? "up" : "down"}">By 10:30: <strong>${fmtPct(t.us_r60)}</strong></p>
+      <p class="${(t.us_day_ret ?? 0) >= 0 ? "up" : "down"}">Day: <strong>${fmtPct(t.us_day_ret)}</strong></p>
+      <p>${t.combined_hit ? "Combined hit" : "No combined hit"} · window ${d.open_window_label || ""}</p>
+    </div>`);
+
+    cards.push(`<div class="path-card">
+      <h3>Combined hits</h3>
+      <p>N=<strong>${combined.n ?? 0}</strong> · ${combined.strength || "—"}</p>
+      <p class="up">Green close: <strong>${combined.green_close_pct ?? "—"}%</strong></p>
+      <p class="${(combined.avg_day_ret ?? 0) >= 0 ? "up" : "down"}">Avg day: <strong>${fmtPct(combined.avg_day_ret)}</strong></p>
+      <p>Continued to 10:30: <strong>${combined.continued_to_1030_pct ?? "—"}%</strong></p>
+      <p>Avg next 60m after open window: <strong>${fmtPct(combined.avg_next_ret)}</strong></p>
+    </div>`);
+
+    cards.push(`<div class="path-card">
+      <h3>Contrast · US crash, UK not down</h3>
+      <p>N=<strong>${usOnly.n ?? 0}</strong> · ${usOnly.strength || "—"}</p>
+      <p class="up">Green close: <strong>${usOnly.green_close_pct ?? "—"}%</strong></p>
+      <p class="${(usOnly.avg_day_ret ?? 0) >= 0 ? "up" : "down"}">Avg day: <strong>${fmtPct(usOnly.avg_day_ret)}</strong></p>
+      <p>Avg 10:30: <strong>${fmtPct(usOnly.avg_r60)}</strong></p>
+    </div>`);
+
+    cards.push(`<div class="path-card">
+      <h3>UK down only</h3>
+      <p>N=<strong>${ukOnly.n ?? 0}</strong></p>
+      <p class="up">Green close: <strong>${ukOnly.green_close_pct ?? "—"}%</strong></p>
+      <p class="${(ukOnly.avg_day_ret ?? 0) >= 0 ? "up" : "down"}">Avg day: <strong>${fmtPct(ukOnly.avg_day_ret)}</strong></p>
+    </div>`);
+
+    $("ukCrashCards").innerHTML = cards.join("");
+
+    const matchRows = (d.matches || []).map((m) => {
+      const dCls = (m.us_day_ret ?? 0) >= 0 ? "up" : "down";
+      const oCls = (m.us_open_ret ?? 0) >= 0 ? "up" : "down";
+      return `<tr>
+        <td>${fmtDate(m.date)}</td>
+        <td>${m.label || "—"}</td>
+        <td class="down">${fmtPct(m.uk_ret)}</td>
+        <td class="${oCls}">${fmtPct(m.us_open_ret)}</td>
+        <td class="${(m.us_r60 ?? 0) >= 0 ? "up" : "down"}">${fmtPct(m.us_r60)}</td>
+        <td class="${(m.us_next_ret ?? 0) >= 0 ? "up" : "down"}">${fmtPct(m.us_next_ret)}</td>
+        <td class="${dCls}">${fmtPct(m.us_day_ret)}</td>
+      </tr>`;
+    }).join("");
+
+    $("ukCrashMatches").innerHTML = `
+      <h3>Combined rule hits</h3>
+      <div class="table-wrap">
+        <table class="moves-table">
+          <thead>
+            <tr>
+              <th>Date</th><th>Day</th><th>UK %</th><th>US open %</th>
+              <th>10:30 %</th><th>Next 60m %</th><th>Day %</th>
+            </tr>
+          </thead>
+          <tbody>${matchRows || "<tr><td colspan='7'>No combined hits</td></tr>"}</tbody>
+        </table>
+      </div>
+    `;
+
+    const contrastRows = (d.contrast_us_only || []).map((m) => {
+      const dCls = (m.us_day_ret ?? 0) >= 0 ? "up" : "down";
+      return `<tr>
+        <td>${fmtDate(m.date)}</td>
+        <td>${m.label || "—"}</td>
+        <td>${fmtPct(m.uk_ret)}</td>
+        <td class="down">${fmtPct(m.us_open_ret)}</td>
+        <td class="${(m.us_r60 ?? 0) >= 0 ? "up" : "down"}">${fmtPct(m.us_r60)}</td>
+        <td class="${dCls}">${fmtPct(m.us_day_ret)}</td>
+      </tr>`;
+    }).join("");
+
+    $("ukCrashContrast").innerHTML = `
+      <h3>Contrast: US open crash without UK down</h3>
+      <div class="table-wrap">
+        <table class="moves-table">
+          <thead>
+            <tr>
+              <th>Date</th><th>Day</th><th>UK %</th><th>US open %</th><th>10:30 %</th><th>Day %</th>
+            </tr>
+          </thead>
+          <tbody>${contrastRows || "<tr><td colspan='6'>No contrast days</td></tr>"}</tbody>
+        </table>
+      </div>
+    `;
   }
 
   function fillDayPatternDates(data) {
@@ -1550,6 +1679,11 @@
   $("runDayPattern")?.addEventListener("click", loadDayPattern);
   $("dayPatternSymbol")?.addEventListener("change", loadDayPattern);
   $("dayPatternDate")?.addEventListener("change", loadDayPattern);
+
+  $("runUkOpenCrash")?.addEventListener("click", loadUkOpenCrash);
+  ["ukCrashUk", "ukCrashUs", "ukCrashUkThresh", "ukCrashUsThresh", "ukCrashWindow"].forEach((id) => {
+    $(id)?.addEventListener("change", loadUkOpenCrash);
+  });
 
   $("runEarnings")?.addEventListener("click", loadEarnings);
   ["earnFilter", "earnMinCap"].forEach((id) => {
