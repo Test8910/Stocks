@@ -188,6 +188,32 @@
   </section>
 
   <section class="section">
+    <h2>Day played out — pattern match</h2>
+    <p class="hint">Classify today’s session shape (AM crash, reclaim, fade, etc.), find similar historical days, and summarize how those cases closed.</p>
+    <div class="controls compare-controls">
+      <label>
+        Symbol
+        <select id="dayPatternSymbol">
+          <option value="SOXL" selected>SOXL</option>
+          <option value="QQQ">QQQ</option>
+        </select>
+      </label>
+      <label>
+        Focus date
+        <select id="dayPatternDate">
+          <option value="">Latest session</option>
+        </select>
+      </label>
+      <button type="button" id="runDayPattern">Match pattern</button>
+    </div>
+    <p id="dayPatternStory" class="hint"></p>
+    <p id="dayPatternSummary" class="hint"></p>
+    <div id="dayPatternCards" class="compare-grid"></div>
+    <div id="dayPatternMatches" class="big-move-list"></div>
+    <div id="dayPatternCatalog" class="big-move-list"></div>
+  </section>
+
+  <section class="section">
     <h2>Mon–Fri session % (SOXL &amp; QQQ)</h2>
     <p class="hint">Open→close % for each weekday session. Summary shows how often each weekday finished up, plus every day side-by-side.</p>
     <button type="button" id="runWeekdayReturns">Refresh</button>

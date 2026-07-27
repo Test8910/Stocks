@@ -66,6 +66,7 @@
     try { loadRsi(); } catch (e) { console.error(e); }
     try { loadChecklist(); } catch (e) { console.error(e); }
     try { loadWeekdayReturns(); } catch (e) { console.error(e); }
+    try { loadDayPattern(); } catch (e) { console.error(e); }
     try { loadEarnings(); } catch (e) { console.error(e); }
   }
 
@@ -158,14 +159,10 @@
     if (!d || !$("earnSummary")) return;
     const allRows = filteredEarningsRows();
     const limitSel = parseEarnLimit();
-    if (limitSel !== Infinity) {
-      // keep earnVisible in sync with dropdown when user picks 20/50/100
-      if (earnVisible === Infinity || earnVisible < limitSel) earnVisible = limitSel;
-      if ($("earnLimit")?.value !== "all" && earnVisible > limitSel && ![50, 100].includes(earnVisible)) {
-        // after Show more, visible can exceed dropdown; that's ok
-      }
-    } else {
+    if (limitSel === Infinity) {
       earnVisible = Infinity;
+    } else if (!Number.isFinite(earnVisible) || earnVisible < limitSel) {
+      earnVisible = limitSel;
     }
 
     const visibleCount = earnVisible === Infinity ? allRows.length : Math.min(earnVisible, allRows.length);
@@ -255,6 +252,144 @@
     } catch (e) {
       if ($("weekdayReturnsSummary")) $("weekdayReturnsSummary").textContent = "Error: " + e.message;
     }
+  }
+
+  async function loadDayPattern() {
+    const symbol = $("dayPatternSymbol")?.value || $("symbol")?.value || "SOXL";
+    const date = $("dayPatternDate")?.value || "";
+    if ($("dayPatternStory")) $("dayPatternStory").textContent = "Classifying day shape…";
+    if ($("dayPatternSummary")) $("dayPatternSummary").textContent = "";
+    let url = `api.php?action=day_pattern&symbol=${encodeURIComponent(symbol)}`;
+    if (date) url += `&date=${encodeURIComponent(date)}`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!data.ok) {
+        if ($("dayPatternStory")) $("dayPatternStory").textContent = data.error || "Day pattern failed";
+        return;
+      }
+      fillDayPatternDates(data);
+      renderDayPattern(data);
+    } catch (e) {
+      if ($("dayPatternStory")) $("dayPatternStory").textContent = "Error: " + e.message;
+    }
+  }
+
+  function fillDayPatternDates(data) {
+    const sel = $("dayPatternDate");
+    if (!sel) return;
+    const dates = [];
+    (data.matches || []).forEach((m) => dates.push(m.date));
+    (data.cohort_am_crash?.dates || []).forEach((d) => dates.push(d));
+    if (data.focus_date) dates.unshift(data.focus_date);
+    // Prefer session list from summary when available
+    if (summary?.sessions) {
+      summary.sessions.forEach((s) => dates.push(s.date));
+    }
+    const uniq = [...new Set(dates.filter(Boolean))].sort().reverse();
+    const prev = sel.value;
+    sel.innerHTML = `<option value="">Latest session</option>` + uniq.map((d) =>
+      `<option value="${d}">${fmtDate(d)}</option>`
+    ).join("");
+    if (prev && uniq.includes(prev)) sel.value = prev;
+    else if (data.focus_date) sel.value = data.focus_date;
+  }
+
+  function renderDayPattern(d) {
+    if (!d || !$("dayPatternStory")) return;
+    const t = d.today || {};
+    $("dayPatternStory").textContent = d.story || "";
+    $("dayPatternSummary").textContent = d.summary_text || "";
+
+    const am = d.cohort_am_crash || {};
+    const same = d.cohort_same_pattern || {};
+    const proj = d.projected_close || {};
+    const fmtPct = (v) => v == null ? "—" : `${v >= 0 ? "+" : ""}${Number(v).toFixed(2)}%`;
+    const fmtPx = (v) => v == null ? "—" : `$${Number(v).toFixed(2)}`;
+
+    const cards = [];
+    cards.push(`<div class="path-card">
+      <h3>Today · ${t.pattern_label || "—"}</h3>
+      <p>${t.complete === false ? "Live / incomplete" : "Complete session"}</p>
+      <p class="${(t.day_ret ?? 0) >= 0 ? "up" : "down"}">Day: <strong>${fmtPct(t.day_ret)}</strong></p>
+      <p class="${(t.r60 ?? 0) >= 0 ? "up" : "down"}">By 10:30: <strong>${fmtPct(t.r60)}</strong></p>
+      <p>Low ${fmtPx(t.low)} @ ${t.low_time || "—"} · reclaim ${fmtPct(t.close_from_low)}</p>
+    </div>`);
+
+    cards.push(`<div class="path-card">
+      <h3>AM crash cohort</h3>
+      <p>N=<strong>${am.n ?? 0}</strong> · ${am.strength || "—"}</p>
+      <p>Better than 10:30: <strong>${am.closed_better_than_1030_pct ?? "—"}%</strong></p>
+      <p class="up">Green close: <strong>${am.close_green_pct ?? "—"}%</strong></p>
+      <p class="${(am.avg_day_ret ?? 0) >= 0 ? "up" : "down"}">Avg day: <strong>${fmtPct(am.avg_day_ret)}</strong></p>
+    </div>`);
+
+    cards.push(`<div class="path-card">
+      <h3>Same pattern</h3>
+      <p>N=<strong>${same.n ?? 0}</strong> · ${same.strength || "—"}</p>
+      <p class="up">Green close: <strong>${same.close_green_pct ?? "—"}%</strong></p>
+      <p class="${(same.avg_day_ret ?? 0) >= 0 ? "up" : "down"}">Avg day: <strong>${fmtPct(same.avg_day_ret)}</strong></p>
+      <p>Avg reclaim from low: <strong>${fmtPct(same.avg_reclaim_from_low)}</strong></p>
+    </div>`);
+
+    if (proj.status === "projected") {
+      cards.push(`<div class="path-card">
+        <h3>Projected close</h3>
+        <p>Method: ${String(proj.method || "").replaceAll("_", " ")}</p>
+        <p class="${(proj.expected_day_pct ?? 0) >= 0 ? "up" : "down"}">Expected day: <strong>${fmtPct(proj.expected_day_pct)}</strong></p>
+        <p>≈ <strong>${fmtPx(proj.expected_close)}</strong></p>
+        <p class="hint">${proj.note || ""}</p>
+      </div>`);
+    } else if (proj.status === "complete") {
+      cards.push(`<div class="path-card">
+        <h3>Session close</h3>
+        <p class="${(proj.actual_day_pct ?? 0) >= 0 ? "up" : "down"}">Actual: <strong>${fmtPct(proj.actual_day_pct)}</strong></p>
+        <p>${fmtPx(proj.actual_close)}</p>
+      </div>`);
+    }
+
+    $("dayPatternCards").innerHTML = cards.join("");
+
+    const rows = (d.matches || []).map((m) => {
+      const dCls = (m.day_ret ?? 0) >= 0 ? "up" : "down";
+      const aCls = (m.r60 ?? 0) >= 0 ? "up" : "down";
+      return `<tr>
+        <td>${fmtDate(m.date)}</td>
+        <td>${m.label || "—"}</td>
+        <td>${m.score ?? "—"}</td>
+        <td>${m.pattern_label || m.pattern_id || "—"}</td>
+        <td class="${aCls}">${fmtPct(m.r60)}</td>
+        <td class="${dCls}">${fmtPct(m.day_ret)}</td>
+        <td>${fmtPct(m.close_from_low)}</td>
+        <td>${fmtPct(m.close_vs_1030)}</td>
+      </tr>`;
+    }).join("");
+
+    $("dayPatternMatches").innerHTML = `
+      <div class="table-wrap">
+        <table class="moves-table">
+          <thead>
+            <tr>
+              <th>Date</th><th>Day</th><th>Score</th><th>Pattern</th>
+              <th>10:30 %</th><th>Day %</th><th>Reclaim</th><th>vs 10:30</th>
+            </tr>
+          </thead>
+          <tbody>${rows || "<tr><td colspan='8'>No similar days</td></tr>"}</tbody>
+        </table>
+      </div>
+    `;
+
+    const catRows = (d.pattern_catalog || []).map((c) =>
+      `<tr><td>${c.label || c.id}</td><td>${c.n}</td></tr>`
+    ).join("");
+    $("dayPatternCatalog").innerHTML = `
+      <div class="table-wrap">
+        <table class="moves-table">
+          <thead><tr><th>Pattern in history</th><th>Count</th></tr></thead>
+          <tbody>${catRows || "<tr><td colspan='2'>None</td></tr>"}</tbody>
+        </table>
+      </div>
+    `;
   }
 
   function renderWeekdayReturns(d) {
@@ -1411,6 +1546,10 @@
   }, checklistRefreshSec * 1000);
 
   $("runWeekdayReturns")?.addEventListener("click", loadWeekdayReturns);
+
+  $("runDayPattern")?.addEventListener("click", loadDayPattern);
+  $("dayPatternSymbol")?.addEventListener("change", loadDayPattern);
+  $("dayPatternDate")?.addEventListener("change", loadDayPattern);
 
   $("runEarnings")?.addEventListener("click", loadEarnings);
   ["earnFilter", "earnMinCap"].forEach((id) => {

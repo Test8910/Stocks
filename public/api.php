@@ -9,6 +9,7 @@ $config = require dirname(__DIR__) . '/src/bootstrap.php';
 
 use Stocks\BigMoveDetector;
 use Stocks\Database;
+use Stocks\DayPatternMatcher;
 use Stocks\EarningsClient;
 use Stocks\GlobalLeadLag;
 use Stocks\LiveBiasService;
@@ -346,6 +347,25 @@ try {
 
         case 'weekday_returns': {
             $result = (new WeekdayReturns($stats))->build(['SOXL', 'QQQ']);
+            echo json_encode($result);
+            break;
+        }
+
+        case 'day_pattern': {
+            $sym = strtoupper((string) ($_GET['symbol'] ?? 'SOXL'));
+            if (!in_array($sym, ['SOXL', 'QQQ'], true)) {
+                $sym = 'SOXL';
+            }
+            $focus = isset($_GET['date']) ? (string) $_GET['date'] : null;
+            if ($focus !== null && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $focus)) {
+                $focus = null;
+            }
+            [$interval] = $parseOptions($config);
+            // Day-shape matching uses 1m paths so minute marks (10:30 etc.) stay accurate.
+            $paths = $stats->sessionPaths($sym);
+            $result = (new DayPatternMatcher($session))->analyze($paths, $sym, $focus);
+            $result['interval_minutes'] = 1;
+            $result['requested_interval'] = $interval;
             echo json_encode($result);
             break;
         }
