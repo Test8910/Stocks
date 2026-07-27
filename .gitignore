@@ -1,0 +1,7 @@
+/config/config.php
+/storage/*.sqlite
+/storage/*.db
+/storage/*.log
+/storage/*.sqlite-journal
+/storage/earnings_cache/
+.DS_Store

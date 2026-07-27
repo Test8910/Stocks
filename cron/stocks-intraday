@@ -1,0 +1,4 @@
+# Every 5 minutes — SOXL/QQQ 1m RTH sync
+# Install: crontab -e  →  paste the line below (edit the path)
+
+*/5 * * * * cd /path/to/Stocks && /usr/bin/php bin/sync_intraday.php >> storage/sync.log 2>&1

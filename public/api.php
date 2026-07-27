@@ -1,0 +1,707 @@
+<?php
+
+declare(strict_types=1);
+
+header('Content-Type: application/json; charset=utf-8');
+header('Access-Control-Allow-Origin: *');
+
+$config = require dirname(__DIR__) . '/src/bootstrap.php';
+
+use Stocks\BigMoveDetector;
+use Stocks\Database;
+use Stocks\DayPatternMatcher;
+use Stocks\EarningsClient;
+use Stocks\GlobalLeadLag;
+use Stocks\LiveBiasService;
+use Stocks\PatternEngine;
+use Stocks\PriceRepository;
+use Stocks\RsiAnalyzer;
+use Stocks\ScenarioAnalyzer;
+use Stocks\SessionFilter;
+use Stocks\StatsService;
+use Stocks\SymbolSessions;
+use Stocks\TradeChecklistService;
+use Stocks\UkOpenCrashAnalyzer;
+use Stocks\WeekCompare;
+use Stocks\WeekdayReturns;
+use Stocks\YahooFinanceClient;
+
+try {
+    $pdo = Database::pdo($config);
+    $repo = new PriceRepository($pdo);
+    $session = new SessionFilter(
+        $config['timezone'] ?? 'America/New_York',
+        $config['session_start'] ?? '09:30',
+        $config['session_end'] ?? '16:00'
+    );
+    $stats = new StatsService($repo, $session);
+
+    $action = $_GET['action'] ?? 'symbols';
+    $symbol = strtoupper((string) ($_GET['symbol'] ?? 'SOXL'));
+
+    $parseOptions = static function (array $config): array {
+        $intervalAllowed = [1, 2, 5, 15];
+        $interval = isset($_GET['interval']) ? (int) $_GET['interval'] : 1;
+        if (!in_array($interval, $intervalAllowed, true)) {
+            $interval = 1;
+        }
+
+        $bmCfg = $config['big_moves'] ?? [];
+        $dollarAllowed = [5.0, 7.0, 9.0, 11.0];
+        $requested = isset($_GET['min_dollars']) ? (float) $_GET['min_dollars'] : null;
+        $minDollars = in_array($requested, $dollarAllowed, true)
+            ? $requested
+            : (float) ($bmCfg['min_dollars'] ?? 5.0);
+        if (!in_array($minDollars, $dollarAllowed, true)) {
+            $minDollars = 5.0;
+        }
+
+        return [$interval, $minDollars, $bmCfg];
+    };
+
+    $buildWeekdayAvgs = static function (array $paths, int $interval) use ($stats, $session, $symbol): array {
+        $weekdayAvgs = [];
+        if ($interval <= 1) {
+            for ($wd = 1; $wd <= 5; $wd++) {
+                $weekdayAvgs[$wd] = $stats->weekdayAvgPrice($symbol, $wd);
+            }
+            return $weekdayAvgs;
+        }
+
+        $labels = [1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri'];
+        for ($wd = 1; $wd <= 5; $wd++) {
+            $dayPaths = array_values(array_filter(
+                $paths,
+                static fn ($p) => (int) $p['weekday'] === $wd
+            ));
+            $bucketMap = [];
+            foreach ($dayPaths as $path) {
+                foreach ($path['points'] as $pt) {
+                    $m = (int) $pt['minute_of_day'];
+                    $bucketMap[$m]['sum'] = ($bucketMap[$m]['sum'] ?? 0) + (float) $pt['price'];
+                    $bucketMap[$m]['n'] = ($bucketMap[$m]['n'] ?? 0) + 1;
+                }
+            }
+            ksort($bucketMap);
+            $times = [];
+            $avgPrice = [];
+            $bestLow = null;
+            $bestHigh = null;
+            $lowM = null;
+            $highM = null;
+            foreach ($bucketMap as $m => $agg) {
+                $p = $agg['sum'] / $agg['n'];
+                $times[] = $session->minuteLabel((int) $m);
+                $avgPrice[] = round($p, 4);
+                if ($bestLow === null || $p < $bestLow) {
+                    $bestLow = $p;
+                    $lowM = (int) $m;
+                }
+                if ($bestHigh === null || $p > $bestHigh) {
+                    $bestHigh = $p;
+                    $highM = (int) $m;
+                }
+            }
+            $weekdayAvgs[$wd] = [
+                'weekday' => $wd,
+                'label' => $labels[$wd],
+                'times' => $times,
+                'avg_price' => $avgPrice,
+                'avg_norm' => [],
+                'low_time' => $lowM !== null ? $session->minuteLabel($lowM) : null,
+                'high_time' => $highM !== null ? $session->minuteLabel($highM) : null,
+                'low_price' => $bestLow !== null ? round($bestLow, 4) : null,
+                'high_price' => $bestHigh !== null ? round($bestHigh, 4) : null,
+                'sessions' => count($dayPaths),
+            ];
+        }
+        return $weekdayAvgs;
+    };
+
+    $buildSummary = static function () use (
+        $config,
+        $stats,
+        $session,
+        $symbol,
+        $parseOptions,
+        $buildWeekdayAvgs
+    ): array {
+        [$interval, $minDollars, $bmCfg] = $parseOptions($config);
+
+        $paths1m = $stats->sessionPaths($symbol);
+        $paths = $stats->aggregatePaths($paths1m, $interval);
+        $analysis = $stats->analyzeFromPaths($paths, $symbol, $interval);
+
+        $minWindow = (int) ($config['pattern']['min_window_minutes'] ?? 3);
+        if ($interval > 1) {
+            $minWindow = min($minWindow, $interval);
+        }
+
+        $engine = new PatternEngine(
+            (float) ($config['pattern']['probability_threshold'] ?? 0.60),
+            (int) ($config['pattern']['min_samples'] ?? 2),
+            $session,
+            $minWindow,
+            $interval
+        );
+
+        $bigMoves = (new BigMoveDetector(
+            $session,
+            $minDollars,
+            $minDollars,
+            (float) ($bmCfg['reversal_dollars'] ?? 1.5),
+            (int) ($bmCfg['max_window_minutes'] ?? 90)
+        ))->analyze($paths);
+
+        $detected = $engine->withDollarMoves(
+            $engine->detect($analysis),
+            $bigMoves,
+            $minDollars
+        );
+
+        $step = max(1, $interval);
+        $times = [];
+        for ($m = 0; $m < $analysis['session_minutes']; $m += $step) {
+            $times[] = $session->minuteLabel($m);
+        }
+
+        $dateA = isset($_GET['date_a']) ? (string) $_GET['date_a'] : '';
+        $dateB = isset($_GET['date_b']) ? (string) $_GET['date_b'] : '';
+        $datesParam = isset($_GET['dates']) ? (string) $_GET['dates'] : '';
+        $selectedDates = $datesParam !== ''
+            ? array_values(array_filter(array_map('trim', explode(',', $datesParam))))
+            : array_values(array_filter([$dateA, $dateB]));
+        $compareMode = (string) ($_GET['compare_mode'] ?? 'last4_weekday');
+        $compareWeekday = isset($_GET['compare_weekday']) ? (int) $_GET['compare_weekday'] : 5;
+        $compareLimit = isset($_GET['compare_limit']) ? (int) $_GET['compare_limit'] : 4;
+        $weekCompare = (new WeekCompare($session))->build(
+            $paths,
+            $bigMoves['moves'] ?? [],
+            $selectedDates,
+            $compareMode,
+            $compareWeekday,
+            $compareLimit
+        );
+
+        return [
+            'ok' => true,
+            'symbol' => $symbol,
+            'interval_minutes' => $interval,
+            'min_dollars' => $minDollars,
+            'bar_count' => $analysis['bar_count'],
+            'session_count' => $analysis['session_count'],
+            'low_high' => array_values($analysis['low_high']),
+            'patterns' => $detected,
+            'heatmap' => $analysis['heatmap'],
+            'times' => $times,
+            'weekday_labels' => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+            'weekdays' => $analysis['weekdays'],
+            'sessions' => $paths,
+            'weekday_avg_price' => $buildWeekdayAvgs($paths, $interval),
+            'big_moves' => $bigMoves,
+            'week_compare' => $weekCompare,
+            'options' => [
+                'interval_minutes' => $interval,
+                'min_dollars' => $minDollars,
+                'probability_threshold' => $detected['threshold'],
+            ],
+        ];
+    };
+
+    switch ($action) {
+        case 'symbols':
+            $meta = [];
+            foreach (SymbolSessions::all($config) as $m) {
+                $meta[$m['symbol']] = $m;
+            }
+            $rows = $repo->activeSymbols();
+            $out = [];
+            foreach ($rows as $r) {
+                $m = $meta[$r['symbol']] ?? null;
+                $out[] = [
+                    'symbol' => $r['symbol'],
+                    'name' => $r['name'],
+                    'region' => $m['region'] ?? 'us',
+                    'role' => $m['role'] ?? 'other',
+                    'bars' => $repo->countBars($r['symbol']),
+                    'latest' => $repo->latestTs($r['symbol']),
+                ];
+            }
+            echo json_encode(['ok' => true, 'symbols' => $out], JSON_PRETTY_PRINT);
+            break;
+
+        case 'global_lead': {
+            $uk = strtoupper((string) ($_GET['uk'] ?? 'EQQQ'));
+            $us = strtoupper((string) ($_GET['us'] ?? 'QQQ'));
+            if (!in_array($uk, ['EQQQ', 'FTSE'], true)) {
+                $uk = 'EQQQ';
+            }
+            if (!in_array($us, ['QQQ', 'SOXL'], true)) {
+                $us = 'QQQ';
+            }
+            $threshold = isset($_GET['threshold_pct']) ? (float) $_GET['threshold_pct'] : 0.3;
+            $allowed = [0.2, 0.3, 0.5, 1.0];
+            $okT = false;
+            foreach ($allowed as $t) {
+                if (abs($threshold - $t) < 0.001) {
+                    $threshold = $t;
+                    $okT = true;
+                    break;
+                }
+            }
+            if (!$okT) {
+                $threshold = 0.3;
+            }
+            $meta = SymbolSessions::all($config);
+            $result = (new GlobalLeadLag($stats))->analyze($meta, $uk, $us, $threshold);
+            echo json_encode($result);
+            break;
+        }
+
+        case 'live_bias': {
+            $uk = strtoupper((string) ($_GET['uk'] ?? 'EQQQ'));
+            $us = strtoupper((string) ($_GET['us'] ?? 'QQQ'));
+            if (!in_array($uk, ['EQQQ', 'FTSE'], true)) {
+                $uk = 'EQQQ';
+            }
+            if (!in_array($us, ['QQQ', 'SOXL'], true)) {
+                $us = 'QQQ';
+            }
+            $threshold = isset($_GET['threshold_pct']) ? (float) $_GET['threshold_pct'] : 0.3;
+            $allowed = [0.2, 0.3, 0.5, 1.0];
+            $okT = false;
+            foreach ($allowed as $t) {
+                if (abs($threshold - $t) < 0.001) {
+                    $threshold = $t;
+                    $okT = true;
+                    break;
+                }
+            }
+            if (!$okT) {
+                $threshold = 0.3;
+            }
+            $meta = SymbolSessions::all($config);
+            $yahoo = new YahooFinanceClient(
+                requestDelayMs: (int) ($config['request_delay_ms'] ?? 200)
+            );
+            $result = (new LiveBiasService($yahoo, new GlobalLeadLag($stats)))
+                ->build($meta, $uk, $us, $threshold);
+            echo json_encode($result);
+            break;
+        }
+
+        case 'rsi': {
+            $sym = strtoupper((string) ($_GET['symbol'] ?? 'SOXL'));
+            if (!in_array($sym, ['SOXL', 'QQQ'], true)) {
+                $sym = 'SOXL';
+            }
+            $interval = isset($_GET['rsi_interval']) ? (int) $_GET['rsi_interval'] : 5;
+            if (!in_array($interval, [1, 5, 15], true)) {
+                $interval = 5;
+            }
+            $forward = isset($_GET['forward_bars']) ? (int) $_GET['forward_bars'] : 6;
+            if (!in_array($forward, [3, 6, 12], true)) {
+                $forward = 6;
+            }
+            $bars = $repo->barsForSymbol($sym);
+            $result = (new RsiAnalyzer())->analyze($bars, $sym, $interval, 14, 30.0, 70.0, $forward);
+            echo json_encode(['ok' => true, 'rsi' => $result]);
+            break;
+        }
+
+        case 'checklist': {
+            $uk = strtoupper((string) ($_GET['uk'] ?? 'EQQQ'));
+            $us = strtoupper((string) ($_GET['us'] ?? 'SOXL'));
+            if (!in_array($uk, ['EQQQ', 'FTSE'], true)) {
+                $uk = 'EQQQ';
+            }
+            if (!in_array($us, ['SOXL', 'QQQ'], true)) {
+                $us = 'SOXL';
+            }
+            $threshold = isset($_GET['threshold_pct']) ? (float) $_GET['threshold_pct'] : 0.3;
+            $allowed = [0.2, 0.3, 0.5, 1.0];
+            $okT = false;
+            foreach ($allowed as $t) {
+                if (abs($threshold - $t) < 0.001) {
+                    $threshold = $t;
+                    $okT = true;
+                    break;
+                }
+            }
+            if (!$okT) {
+                $threshold = 0.3;
+            }
+            $syncLive = !isset($_GET['sync']) || $_GET['sync'] !== '0';
+            $meta = SymbolSessions::all($config);
+            $yahoo = new YahooFinanceClient(
+                requestDelayMs: (int) ($config['request_delay_ms'] ?? 150)
+            );
+            $result = (new TradeChecklistService(
+                new LiveBiasService($yahoo, new GlobalLeadLag($stats)),
+                new RsiAnalyzer(),
+                $repo,
+                $yahoo
+            ))->build($meta, $config, $uk, $us, $threshold, $syncLive);
+            echo json_encode($result);
+            break;
+        }
+
+        case 'weekday_returns': {
+            $result = (new WeekdayReturns($stats))->build(['SOXL', 'QQQ']);
+            echo json_encode($result);
+            break;
+        }
+
+        case 'day_pattern': {
+            $sym = strtoupper((string) ($_GET['symbol'] ?? 'SOXL'));
+            if (!in_array($sym, ['SOXL', 'QQQ'], true)) {
+                $sym = 'SOXL';
+            }
+            $focus = isset($_GET['date']) ? (string) $_GET['date'] : null;
+            if ($focus !== null && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $focus)) {
+                $focus = null;
+            }
+            [$interval] = $parseOptions($config);
+            // Day-shape matching uses 1m paths so minute marks (10:30 etc.) stay accurate.
+            $paths = $stats->sessionPaths($sym);
+            $result = (new DayPatternMatcher($session))->analyze($paths, $sym, $focus);
+            $result['interval_minutes'] = 1;
+            $result['requested_interval'] = $interval;
+            echo json_encode($result);
+            break;
+        }
+
+        case 'uk_open_crash': {
+            $uk = strtoupper((string) ($_GET['uk'] ?? 'EQQQ'));
+            $us = strtoupper((string) ($_GET['us'] ?? 'SOXL'));
+            if (!in_array($uk, ['EQQQ', 'FTSE'], true)) {
+                $uk = 'EQQQ';
+            }
+            if (!in_array($us, ['SOXL', 'QQQ'], true)) {
+                $us = 'SOXL';
+            }
+            $ukThresh = isset($_GET['uk_threshold_pct']) ? (float) $_GET['uk_threshold_pct'] : 0.3;
+            $ukAllowed = [0.3, 0.5, 1.0];
+            $okUk = false;
+            foreach ($ukAllowed as $t) {
+                if (abs($ukThresh - $t) < 0.001) {
+                    $ukThresh = $t;
+                    $okUk = true;
+                    break;
+                }
+            }
+            if (!$okUk) {
+                $ukThresh = 0.3;
+            }
+            $usThresh = isset($_GET['us_open_threshold_pct']) ? (float) $_GET['us_open_threshold_pct'] : 2.0;
+            $usAllowed = [2.0, 3.0, 4.0];
+            $okUs = false;
+            foreach ($usAllowed as $t) {
+                if (abs($usThresh - $t) < 0.001) {
+                    $usThresh = $t;
+                    $okUs = true;
+                    break;
+                }
+            }
+            if (!$okUs) {
+                $usThresh = 2.0;
+            }
+            $window = isset($_GET['window']) ? (int) $_GET['window'] : 15;
+            if (!in_array($window, [15, 30], true)) {
+                $window = 15;
+            }
+            $focus = isset($_GET['date']) ? (string) $_GET['date'] : null;
+            if ($focus !== null && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $focus)) {
+                $focus = null;
+            }
+            $meta = SymbolSessions::all($config);
+            $result = (new UkOpenCrashAnalyzer($stats))->analyze(
+                $meta,
+                $uk,
+                $us,
+                $ukThresh,
+                $usThresh,
+                $window,
+                $focus
+            );
+            echo json_encode($result);
+            break;
+        }
+
+        case 'earnings': {
+            $filter = (string) ($_GET['filter'] ?? 'major');
+            if (!in_array($filter, ['major', 'watchlist', 'all'], true)) {
+                $filter = 'major';
+            }
+            $pastDays = isset($_GET['past_days']) ? (int) $_GET['past_days'] : 14;
+            $futureDays = isset($_GET['future_days']) ? (int) $_GET['future_days'] : 14;
+            $pastDays = max(7, min(21, $pastDays));
+            $futureDays = max(7, min(21, $futureDays));
+            $minCap = isset($_GET['min_cap_b']) ? (int) $_GET['min_cap_b'] : 20;
+            if (!in_array($minCap, [5, 10, 20, 50], true)) {
+                $minCap = 20;
+            }
+            $cacheDir = dirname(__DIR__) . '/storage/earnings_cache';
+            $client = new EarningsClient(
+                requestDelayMs: 80,
+                cacheDir: $cacheDir
+            );
+            $result = $client->calendar($pastDays, $futureDays, $filter, $minCap);
+            echo json_encode($result);
+            break;
+        }
+
+        case 'series': {
+            $summary = $buildSummary();
+            $weekday = (int) ($_GET['weekday'] ?? 1);
+            echo json_encode([
+                'ok' => true,
+                'symbol' => $symbol,
+                'weekday' => $weekday,
+                'options' => $summary['options'],
+                'day' => $summary['weekdays'][$weekday] ?? null,
+                'low_high' => $summary['low_high'][$weekday - 1] ?? null,
+            ], JSON_PRETTY_PRINT);
+            break;
+        }
+
+        case 'heatmap': {
+            $summary = $buildSummary();
+            echo json_encode([
+                'ok' => true,
+                'symbol' => $symbol,
+                'options' => $summary['options'],
+                'session_minutes' => $summary['session_count'],
+                'bar_count' => $summary['bar_count'],
+                'session_count' => $summary['session_count'],
+                'weekday_labels' => $summary['weekday_labels'],
+                'heatmap' => $summary['heatmap'],
+                'low_high' => $summary['low_high'],
+                'times' => $summary['times'],
+            ], JSON_PRETTY_PRINT);
+            break;
+        }
+
+        case 'patterns': {
+            $summary = $buildSummary();
+            echo json_encode([
+                'ok' => true,
+                'symbol' => $symbol,
+                'options' => $summary['options'],
+                'bar_count' => $summary['bar_count'],
+                'session_count' => $summary['session_count'],
+                'patterns' => $summary['patterns'],
+                'low_high' => $summary['low_high'],
+            ], JSON_PRETTY_PRINT);
+            break;
+        }
+
+        case 'session': {
+            [$interval] = $parseOptions($config);
+            $paths = $stats->aggregatePaths($stats->sessionPaths($symbol), $interval);
+            $date = (string) ($_GET['date'] ?? '');
+            $match = null;
+            foreach ($paths as $p) {
+                if ($date === '' || $p['date'] === $date) {
+                    $match = $p;
+                    break;
+                }
+            }
+            echo json_encode([
+                'ok' => true,
+                'symbol' => $symbol,
+                'interval_minutes' => $interval,
+                'session' => $match,
+                'dates' => array_column($paths, 'date'),
+            ]);
+            break;
+        }
+
+        case 'summary':
+            echo json_encode($buildSummary());
+            break;
+
+        case 'scenario': {
+            [$interval] = $parseOptions($config);
+            $paths = $stats->aggregatePaths($stats->sessionPaths($symbol), $interval);
+
+            $mode = (string) ($_GET['mode'] ?? 'drop');
+            if (!in_array($mode, ['drop', 'open', 'shape', 'cross'], true)) {
+                $mode = 'drop';
+            }
+
+            $threshold = isset($_GET['threshold_pct']) ? (float) $_GET['threshold_pct'] : 1.0;
+            $allowedThresh = [0.3, 0.5, 1.0, 1.5, 2.0, 3.0];
+            $okThresh = false;
+            foreach ($allowedThresh as $t) {
+                if (abs($threshold - $t) < 0.001) {
+                    $threshold = $t;
+                    $okThresh = true;
+                    break;
+                }
+            }
+            if (!$okThresh) {
+                $threshold = $mode === 'open' || $mode === 'shape' ? 0.5 : 1.0;
+            }
+
+            $nextMinutes = isset($_GET['next_minutes']) ? (int) $_GET['next_minutes'] : 60;
+            if (!in_array($nextMinutes, [30, 60, 90, 120], true)) {
+                $nextMinutes = 60;
+            }
+            $weekday = isset($_GET['weekday']) && $_GET['weekday'] !== '' && $_GET['weekday'] !== 'all'
+                ? (int) $_GET['weekday']
+                : null;
+            if ($weekday !== null && ($weekday < 1 || $weekday > 5)) {
+                $weekday = null;
+            }
+
+            $analyzer = new ScenarioAnalyzer($session);
+            $presets = ScenarioAnalyzer::windowPresets();
+            $openPresets = ScenarioAnalyzer::openWindowPresets();
+            $shapePresets = ScenarioAnalyzer::shapePresets();
+
+            if ($mode === 'open') {
+                $windowId = (string) ($_GET['window'] ?? 'first_30');
+                $to = 30;
+                foreach ($openPresets as $p) {
+                    if ($p['id'] === $windowId) {
+                        $to = $p['to'];
+                        break;
+                    }
+                }
+                $condition = (string) ($_GET['direction'] ?? $_GET['condition'] ?? 'up');
+                if (!in_array($condition, ['up', 'down', 'flat'], true)) {
+                    $condition = 'up';
+                }
+                $result = $analyzer->analyzeOpenDrive(
+                    $paths,
+                    $symbol,
+                    $to,
+                    $condition,
+                    $threshold,
+                    $nextMinutes,
+                    $weekday
+                );
+            } elseif ($mode === 'shape') {
+                $shape = (string) ($_GET['shape'] ?? 'v_reclaim');
+                $setupEnd = isset($_GET['setup_end']) ? (int) $_GET['setup_end'] : 60;
+                if (!in_array($setupEnd, [30, 45, 60, 90], true)) {
+                    $setupEnd = 60;
+                }
+                $result = $analyzer->analyzeShape(
+                    $paths,
+                    $symbol,
+                    $shape,
+                    $setupEnd,
+                    $threshold,
+                    $nextMinutes,
+                    $weekday
+                );
+            } elseif ($mode === 'cross') {
+                $leadSymbol = strtoupper((string) ($_GET['lead'] ?? 'QQQ'));
+                $followSymbol = strtoupper((string) ($_GET['follow'] ?? $symbol));
+                if ($leadSymbol === $followSymbol) {
+                    $leadSymbol = $followSymbol === 'SOXL' ? 'QQQ' : 'SOXL';
+                }
+                $pair = (string) ($_GET['pair'] ?? '');
+                if ($pair === 'soxl_qqq') {
+                    $leadSymbol = 'SOXL';
+                    $followSymbol = 'QQQ';
+                } elseif ($pair === 'qqq_soxl' || $pair === '') {
+                    $leadSymbol = 'QQQ';
+                    $followSymbol = 'SOXL';
+                }
+                $windowId = (string) ($_GET['window'] ?? 'first_30');
+                $to = 30;
+                foreach ($openPresets as $p) {
+                    if ($p['id'] === $windowId) {
+                        $to = $p['to'];
+                        break;
+                    }
+                }
+                // also allow drop window ids
+                foreach ($presets as $p) {
+                    if ($p['id'] === $windowId) {
+                        $to = $p['to'];
+                        break;
+                    }
+                }
+                $direction = (string) ($_GET['direction'] ?? 'down');
+                if (!in_array($direction, ['down', 'up'], true)) {
+                    $direction = 'down';
+                }
+                $leadPaths = $stats->aggregatePaths($stats->sessionPaths($leadSymbol), $interval);
+                $followPaths = $stats->aggregatePaths($stats->sessionPaths($followSymbol), $interval);
+                $result = $analyzer->analyzeCross(
+                    $leadPaths,
+                    $followPaths,
+                    $leadSymbol,
+                    $followSymbol,
+                    $to,
+                    $direction,
+                    $threshold,
+                    $nextMinutes,
+                    $weekday
+                );
+            } else {
+                $windowId = (string) ($_GET['window'] ?? '0930_1000');
+                $from = isset($_GET['from']) ? (int) $_GET['from'] : null;
+                $to = isset($_GET['to']) ? (int) $_GET['to'] : null;
+                foreach ($presets as $p) {
+                    if ($p['id'] === $windowId) {
+                        $from = $p['from'];
+                        $to = $p['to'];
+                        break;
+                    }
+                }
+                if ($from === null || $to === null) {
+                    $from = 0;
+                    $to = 30;
+                }
+
+                $direction = (string) ($_GET['direction'] ?? 'down');
+                if (!in_array($direction, ['down', 'up'], true)) {
+                    $direction = 'down';
+                }
+                $measure = (string) ($_GET['measure'] ?? 'end');
+                if (!in_array($measure, ['end', 'maxdd'], true)) {
+                    $measure = 'end';
+                }
+                $result = $analyzer->analyzeDrop(
+                    $paths,
+                    $symbol,
+                    $from,
+                    $to,
+                    $threshold,
+                    $direction,
+                    $measure,
+                    $nextMinutes,
+                    $weekday
+                );
+            }
+
+            foreach ($result['matches'] as &$m) {
+                unset($m['norm_path']);
+            }
+            unset($m);
+
+            echo json_encode([
+                'ok' => true,
+                'interval_minutes' => $interval,
+                'mode' => $mode,
+                'windows' => $presets,
+                'open_windows' => $openPresets,
+                'shapes' => $shapePresets,
+                'scenario' => $result,
+            ]);
+            break;
+        }
+
+        default:
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'Unknown action']);
+    }
+} catch (Throwable $e) {
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+}
